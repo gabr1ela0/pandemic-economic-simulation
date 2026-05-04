@@ -19,12 +19,12 @@ from entities import Government
 from simulation import SimulationEngine
 
 
-# ── Polished Dark Palette ─────────────────────────────────────────────────────
+#  Polished Dark Palette 
 BG = "#0f1419"
 SURFACE = "#1a2230"
 BORDER = "#2a3445"
 TEXT = "#ffffff"
-TEXT_DIM = "#93a3bc"
+TEXT_DIM = "#A9A9A9"
 ACCENT = "#5ec9f5"
 GREEN = "#66bb6a"
 YELLOW = "#ffca28"
@@ -241,10 +241,11 @@ class LockdownPicker(tk.Frame):
             b = tk.Button(
                 self,
                 text=lbl,
-                width=7,
+                width=4,
                 relief="flat",
                 font=("Arial", 11, "bold"),
                 pady=5,
+                padx=4,
                 command=lambda n=i: self._pick(n),
             )
             b.pack(side="left", padx=2)
@@ -405,9 +406,9 @@ class Dashboard(tk.Tk):
         tk.Label(parent, text="Command Center", bg=SURFACE, fg=TEXT_DIM, font=("Arial", 10)).pack()
         divider()
 
-        self._lock_chip = section("◆", "LOCKDOWN", "Lv 0")
+        self._lock_chip = section("▌", "LOCKDOWN", "Lv 0")
         self._lockdown = LockdownPicker(parent, self._on_lockdown)
-        self._lockdown.pack(padx=16, pady=6, anchor="w")
+        self._lockdown.pack(padx=15, pady=6, anchor="w")
 
         divider()
         self._mask_chip = section("▌", "MASK MANDATE", "Off")
@@ -429,7 +430,7 @@ class Dashboard(tk.Tk):
         self._mask_chk.pack(anchor="w")
 
         divider()
-        self._vacc_chip = section("◇", "VACCINATION", "0%")
+        self._vacc_chip = section("▌", "VACCINATION", "0%")
         self._vacc_var = tk.IntVar(value=0)
         self._vacc_lbl = tk.Label(parent, text="0%", bg=SURFACE, fg=GREEN, font=("Arial", 11, "bold"))
         self._vacc_lbl.pack(anchor="w", padx=16)
@@ -479,7 +480,7 @@ class Dashboard(tk.Tk):
             b = tk.Button(
                 speed_frame,
                 text=lbl,
-                width=5,
+                width=3,
                 relief="flat",
                 font=("Arial", 9),
                 pady=3,
@@ -509,7 +510,7 @@ class Dashboard(tk.Tk):
             bg=YELLOW,
             fg="#000",
             relief="flat",
-            font=("Arial", 10, "bold"),
+            font=("Arial", 12, "bold"),
             pady=6,
             command=self._on_step,
         )
@@ -520,9 +521,9 @@ class Dashboard(tk.Tk):
             parent,
             text="↺ RESET",
             bg="#334156",
-            fg=TEXT,
+            fg="#000000",
             relief="flat",
-            font=("Arial", 10),
+            font=("Arial", 12, "bold"),
             pady=5,
             command=self._on_reset,
         )
@@ -812,8 +813,8 @@ class Dashboard(tk.Tk):
         width, height = 360, 46
         self.update_idletasks()
         target_x = self.winfo_rootx() + self.winfo_width() - width - 18
-        y = self.winfo_rooty() + 18
-        start_x = target_x + 140
+        y = self.winfo_rooty() + self.winfo_height() - height - 60
+        start_x = target_x + width + 20  # starts off-screen to the right
         toast.geometry(f"{width}x{height}+{start_x}+{y}")
 
         tk.Label(toast, text=msg, bg=color, fg="#ffffff", font=("Arial", 10, "bold")).pack(
@@ -883,8 +884,8 @@ class Dashboard(tk.Tk):
         for k, v in rows:
             row = tk.Frame(stats, bg=SURFACE)
             row.pack(fill="x", pady=3)
-            tk.Label(row, text=k, bg=SURFACE, fg=TEXT_DIM, font=("Arial", 10)).pack(side="left")
-            tk.Label(row, text=v, bg=SURFACE, fg=TEXT, font=("Arial", 10, "bold")).pack(side="right")
+            tk.Label(row, text=k, bg=SURFACE, fg=TEXT_DIM, font=("Arial", 15)).pack(side="left")
+            tk.Label(row, text=v, bg=SURFACE, fg=TEXT, font=("Arial", 15, "bold")).pack(side="right")
 
         btns = tk.Frame(win, bg=SURFACE)
         btns.pack(fill="x", padx=24, pady=(20, 0))
@@ -894,7 +895,7 @@ class Dashboard(tk.Tk):
             bg=GREEN,
             fg="#000000",
             relief="flat",
-            font=("Arial", 11, "bold"),
+            font=("Arial", 12, "bold"),
             padx=16,
             pady=6,
             command=self._replay_from_modal,
@@ -904,9 +905,9 @@ class Dashboard(tk.Tk):
             btns,
             text="CLOSE",
             bg="#334156",
-            fg=TEXT,
+            fg="#000000",
             relief="flat",
-            font=("Arial", 11),
+            font=("Arial", 12, "bold"),
             padx=16,
             pady=6,
             command=self._close_game_over,

@@ -19,7 +19,7 @@ import argparse
 from config import CONFIG
 
 
-# ── Batch mode (unchanged from original) ─────────────────────────────────────
+#  Batch mode (unchanged from original) 
 
 BANNER = r"""
 ╔══════════════════════════════════════════════════════════════════════════════╗
@@ -59,7 +59,7 @@ def batch_mode(args: argparse.Namespace) -> None:
     df.to_csv(out, index=False)
     print(f"\nResults saved → '{out}'  ({len(df)} rows × {len(df.columns)} columns)")
 
-    print("\n── FINAL SUMMARY ─────────────────────────────────────────────")
+    print("\n FINAL SUMMARY ")
     last = df.iloc[-1]
     print(f"  Total dead           : {int(last['dead']):,}")
     print(f"  Peak symptomatic     : {int(df['infectious_symptomatic'].max()):,}")
@@ -70,7 +70,7 @@ def batch_mode(args: argparse.Namespace) -> None:
     print(f"  Mean agent wallet    : ${last['mean_wallet']:,.2f}")
 
 
-# ── CLI ───────────────────────────────────────────────────────────────────────
+#  CLI 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
