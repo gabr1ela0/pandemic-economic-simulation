@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pandemic Simulation</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:       #f5f4f0;
+  --surface:  #ffffff;
+  --border:   #e0ddd6;
+  --text:     #1a1a1a;
+  --muted:    #888;
+  --accent:   #3a5a9b;
+
+  /* epidemic state colours */
+  --c-susceptible: #b0aaa0;
+  --c-exposed:     #e8a020;
+  --c-asymp:       #e07040;
+  --c-symp:        #c83030;
+  --c-recovered:   #3a9a6a;
+  --c-dead:        #555;
+
+  /* status */
+  --ok:   #2d8a50;
+  --warn: #d08020;
+  --bad:  #c83030;
+}
+
+body { background: var(--bg); color: var(--text); font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 14px; }
+
+/* ── Layout ── */
+.layout { display: grid; grid-template-columns: 260px 1fr; height: 100vh; }
+
+/* ── Sidebar ── */
+.sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  padding: 20px 16px; gap: 24px;
+  overflow-y: auto;
+}
+
+.brand { display: flex; flex-direction: column; gap: 2px; }
+.brand h1 { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+.brand p  { font-size: 11px; color: var(--muted); }
+
+.section { display: flex; flex-direction: column; gap: 10px; }
+.section-label { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+
+/* Lockdown pills */
+.lock-pills { display: grid; grid-template-columns: repeat(4,1fr); gap: 4px; }
+.lock-pill {
+  padding: 6px 0; border-radius: 6px; border: 1px solid var(--border);
+  background: none; color: var(--muted); font-size: 11px; font-weight: 600;
+  cursor: pointer; text-align: center; transition: all .15s;
+}
+.lock-pill:hover { border-color: var(--accent); color: var(--accent); }
+.lock-pill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.lock-pill.l1.active { background: #b06a10; border-color: #b06a10; }
+.lock-pill.l2.active { background: #b04010; border-color: #b04010; }
+.lock-pill.l3.active { background: var(--bad);  border-color: var(--bad); }
+
+/* Toggle */
+.toggle-row { display: flex; justify-content: space-between; align-items: center; }
+.toggle-label { font-size: 12px; color: var(--text); }
+.toggle { position: relative; width: 38px; height: 21px; cursor: pointer; flex-shrink: 0; }
+.toggle input { opacity: 0; width: 0; height: 0; }
+.toggle-track { position: absolute; inset: 0; background: var(--border); border-radius: 21px; transition: background .2s; }
+.toggle input:checked + .toggle-track { background: var(--accent); }
+.toggle-knob  { position: absolute; top: 3px; left: 3px; width: 15px; height: 15px; background: #fff; border-radius: 50%; transition: transform .2s; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+.toggle input:checked ~ .toggle-knob { transform: translateX(17px); }
+
+/* Sliders */
+.slider-row { display: flex; flex-direction: column; gap: 5px; }
+.slider-top { display: flex; justify-content: space-between; }
+.slider-name { font-size: 12px; color: var(--text); }
+.slider-val  { font-size: 12px; font-weight: 700; color: var(--accent); }
+input[type=range] {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 4px; background: var(--border); border-radius: 2px; outline: none;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--accent); cursor: pointer; border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,.2); transition: transform .1s;
+}
+input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.15); }
+
+/* Buttons */
+.run-btn {
+  width: 100%; padding: 11px; border-radius: 8px;
+  background: var(--accent); color: #fff; border: none;
+  font-size: 13px; font-weight: 700; cursor: pointer;
+  transition: opacity .15s; letter-spacing: .02em;
+}
+.run-btn:hover { opacity: .88; }
+.run-btn.paused { background: #555; }
+
+.reset-btn {
+  width: 100%; padding: 8px; border-radius: 8px;
+  background: none; border: 1px solid var(--border);
+  color: var(--muted); font-size: 11px; cursor: pointer; transition: all .15s;
+}
+.reset-btn:hover { border-color: var(--text); color: var(--text); }
+
+/* Speed */
+.speed-pills { display: grid; grid-template-columns: repeat(4,1fr); gap: 4px; }
+.speed-pill {
+  padding: 5px 0; border-radius: 6px; border: 1px solid var(--border);
+  background: none; color: var(--muted); font-size: 11px; cursor: pointer;
+  text-align: center; transition: all .15s;
+}
+.speed-pill.active, .speed-pill:hover { background: var(--bg); color: var(--text); border-color: #ccc; }
+.speed-pill.active { font-weight: 700; }
+
+/* Legend */
+.legend { display: flex; flex-direction: column; gap: 5px; }
+.legend-item { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--muted); }
+.legend-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+
+/* ── Main area ── */
+.main { display: flex; flex-direction: column; overflow: hidden; }
+
+/* KPI strip */
+.kpi-strip {
+  display: grid; grid-template-columns: repeat(5,1fr);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.kpi {
+  padding: 14px 18px; border-right: 1px solid var(--border);
+}
+.kpi:last-child { border-right: none; }
+.kpi-label { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+.kpi-val   { font-size: 26px; font-weight: 700; line-height: 1; letter-spacing: -.02em; color: var(--text); }
+.kpi-sub   { font-size: 10px; color: var(--muted); margin-top: 3px; }
+.kpi.bad   .kpi-val { color: var(--bad); }
+.kpi.warn  .kpi-val { color: var(--warn); }
+.kpi.good  .kpi-val { color: var(--ok); }
+
+/* Charts */
+.charts { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; flex: 1; min-height: 0; }
+.chart-panel {
+  padding: 16px 18px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border);
+  display: flex; flex-direction: column; background: var(--surface); min-height: 0;
+}
+.chart-panel:nth-child(2n) { border-right: none; }
+.chart-panel:nth-child(3), .chart-panel:nth-child(4) { border-bottom: none; }
+.chart-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+.chart-title  { font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+.chart-note   { font-size: 10px; color: var(--muted); }
+.chart-wrap   { position: relative; flex: 1; min-height: 0; }
+
+/* Status bar */
+.statusbar {
+  background: var(--surface); border-top: 1px solid var(--border);
+  padding: 8px 18px; font-size: 11px; color: var(--muted);
+  display: flex; justify-content: space-between; align-items: center;
+}
+.status-day { font-weight: 700; color: var(--text); }
+
+/* HC overwhelmed flash */
+.hc-banner {
+  background: #fde8e8; border: 1px solid #f5b0b0; color: var(--bad);
+  padding: 6px 18px; font-size: 12px; font-weight: 600; display: none;
+  text-align: center;
+}
+.hc-banner.visible { display: block; }
+</style>
+</head>
+<body>
+<div class="layout">
+
+<!-- ── Sidebar ── -->
+<aside class="sidebar">
+  <div class="brand">
+    <h1>Pandemic Sim</h1>
+    <p>10,000 agents · 200 companies</p>
+  </div>
+
+  <div class="section">
+    <div class="section-label">Lockdown</div>
+    <div class="lock-pills">
+      <button class="lock-pill l0 active" data-l="0">None</button>
+      <button class="lock-pill l1" data-l="1">Light</button>
+      <button class="lock-pill l2" data-l="2">Mod</button>
+      <button class="lock-pill l3" data-l="3">Full</button>
+    </div>
+    <div style="font-size:10px;color:var(--muted);line-height:1.5;" id="lockdownHint">
+      No restrictions. Virus spreads freely.
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-label">Measures</div>
+    <div class="toggle-row">
+      <span class="toggle-label">Mask mandate <span style="color:var(--muted);font-size:10px;">(−50% spread)</span></span>
+      <label class="toggle"><input type="checkbox" id="maskToggle"><div class="toggle-track"></div><div class="toggle-knob"></div></label>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-label">Vaccination</div>
+    <div class="slider-row">
+      <div class="slider-top"><span class="slider-name">Rollout speed</span><span class="slider-val" id="vaccVal">Off</span></div>
+      <input type="range" id="vaccSlider" min="0" max="100" value="0" step="10">
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-label">Stimulus</div>
+    <div class="slider-row">
+      <div class="slider-top"><span class="slider-name">Daily payment to poor</span><span class="slider-val" id="stimVal">$0</span></div>
+      <input type="range" id="stimSlider" min="0" max="300" value="0" step="25">
+    </div>
+    <div style="font-size:10px;color:var(--muted);">Paid to agents with wallet &lt; $300. Adds to national debt.</div>
+  </div>
+
+  <div class="section">
+    <div class="section-label">Speed</div>
+    <div class="speed-pills">
+      <button class="speed-pill" data-s="0.5x">0.5×</button>
+      <button class="speed-pill active" data-s="1x">1×</button>
+      <button class="speed-pill" data-s="3x">3×</button>
+      <button class="speed-pill" data-s="10x">10×</button>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:6px;">
+    <button class="run-btn" id="runBtn">▶  Run</button>
+    <button class="reset-btn" id="resetBtn">↺  Reset</button>
+  </div>
+
+  <div class="section">
+    <div class="section-label">Chart colours</div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:var(--c-susceptible)"></div>Susceptible</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--c-exposed)"></div>Exposed (incubating)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--c-asymp)"></div>Infectious · no symptoms</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--c-symp)"></div>Infectious · symptomatic</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--c-recovered)"></div>Recovered / immune</div>
+    </div>
+  </div>
+</aside>
+
+<!-- ── Main ── -->
+<main class="main">
+
+  <div class="hc-banner" id="hcBanner">⚕ Hospital overwhelmed — mortality rate doubled</div>
+
+  <div class="kpi-strip">
+    <div class="kpi" id="kpiInfect">
+      <div class="kpi-label">Active cases</div>
+      <div class="kpi-val">10</div>
+      <div class="kpi-sub">infectious agents</div>
+    </div>
+    <div class="kpi" id="kpiDead">
+      <div class="kpi-label">Deaths</div>
+      <div class="kpi-val">0</div>
+      <div class="kpi-sub">total</div>
+    </div>
+    <div class="kpi" id="kpiHosp">
+      <div class="kpi-label">Hospital</div>
+      <div class="kpi-val">0%</div>
+      <div class="kpi-sub">of 500 beds used</div>
+    </div>
+    <div class="kpi" id="kpiUnemp">
+      <div class="kpi-label">Unemployment</div>
+      <div class="kpi-val">0%</div>
+      <div class="kpi-sub">of alive population</div>
+    </div>
+    <div class="kpi" id="kpiBankrupt">
+      <div class="kpi-label">Bankrupt firms</div>
+      <div class="kpi-val">0</div>
+      <div class="kpi-sub">of 200 companies</div>
+    </div>
+  </div>
+
+  <div class="charts">
+    <div class="chart-panel">
+      <div class="chart-header">
+        <div class="chart-title">Who's infected?</div>
+        <div class="chart-note">daily agent counts</div>
+      </div>
+      <div class="chart-wrap"><canvas id="epiChart" role="img" aria-label="Epidemic state counts by day">Epidemic chart</canvas></div>
+    </div>
+
+    <div class="chart-panel">
+      <div class="chart-header">
+        <div class="chart-title">Economy</div>
+        <div class="chart-note">GDP left · unemployment right</div>
+      </div>
+      <div class="chart-wrap"><canvas id="econChart" role="img" aria-label="GDP and unemployment over time">Economy chart</canvas></div>
+    </div>
+
+    <div class="chart-panel">
+      <div class="chart-header">
+        <div class="chart-title">Hospital pressure</div>
+        <div class="chart-note">% of 500 beds occupied</div>
+      </div>
+      <div class="chart-wrap"><canvas id="hcChart" role="img" aria-label="Hospital occupancy percentage">Hospital chart</canvas></div>
+    </div>
+
+    <div class="chart-panel">
+      <div class="chart-header">
+        <div class="chart-title">Agent wealth</div>
+        <div class="chart-note">mean — — —  median</div>
+      </div>
+      <div class="chart-wrap"><canvas id="walletChart" role="img" aria-label="Average agent wallet over time">Wallet chart</canvas></div>
+    </div>
+  </div>
+
+  <div class="statusbar">
+    <span id="statusMsg">Ready — press Run to start the simulation.</span>
+    <span class="status-day">Day <span id="dayNum">0</span></span>
+  </div>
+</main>
+
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let running = false;
+let charts  = {};
+let pollTimer = null;
+
+const policy = { lockdown: 0, mask: false, stimulus: 0, vacc_rate: 0 };
+
+// ── Chart setup ────────────────────────────────────────────────────────────
+function initCharts() {
+  const gridColor  = '#e8e5de';
+  const tickColor  = '#999';
+  const baseOpts = (yExtra, y2Extra) => ({
+    responsive: true, maintainAspectRatio: false, animation: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { ticks: { color: tickColor, font:{size:10}, maxTicksLimit:8 }, grid: { color: gridColor }, border: { color: '#d8d5ce' } },
+      y: { ticks: { color: tickColor, font:{size:10} }, grid: { color: gridColor }, border: { color: '#d8d5ce' }, ...(yExtra||{}) },
+      ...(y2Extra ? { y2: { position:'right', grid:{display:false}, border:{color:'#d8d5ce'}, ticks:{color:tickColor,font:{size:10}}, ...y2Extra } } : {})
+    }
+  });
+
+  charts.epi = new Chart(document.getElementById('epiChart'), {
+    type: 'line',
+    data: { labels: [], datasets: [
+      { label:'Susceptible', data:[], borderColor:'#b0aaa0', borderWidth:1.5, pointRadius:0, fill:false },
+      { label:'Exposed',     data:[], borderColor:'#e8a020', borderWidth:1.5, pointRadius:0, fill:false },
+      { label:'Asymp.',      data:[], borderColor:'#e07040', borderWidth:1.5, pointRadius:0, fill:false },
+      { label:'Symptomatic', data:[], borderColor:'#c83030', borderWidth:2,   pointRadius:0, fill:false },
+      { label:'Recovered',   data:[], borderColor:'#3a9a6a', borderWidth:1.5, pointRadius:0, fill:false },
+    ]},
+    options: baseOpts()
+  });
+
+  charts.econ = new Chart(document.getElementById('econChart'), {
+    type: 'line',
+    data: { labels: [], datasets: [
+      { label:'GDP',         data:[], borderColor:'#3a5a9b', borderWidth:2, pointRadius:0, fill:false, yAxisID:'y' },
+      { label:'Unemp %',     data:[], borderColor:'#b06a10', borderWidth:1.5, pointRadius:0, fill:false, yAxisID:'y2', borderDash:[4,3] },
+    ]},
+    options: baseOpts(
+      { ticks: { color:'#999', font:{size:10}, callback: v => '$' + Math.round(v/1000)+'k' } },
+      { ticks: { callback: v => v.toFixed(0)+'%' } }
+    )
+  });
+
+  charts.hc = new Chart(document.getElementById('hcChart'), {
+    type: 'line',
+    data: { labels: [], datasets: [
+      { label:'Occupancy %', data:[], borderColor:'#c83030', borderWidth:2, pointRadius:0,
+        fill:true, backgroundColor:'rgba(200,48,48,0.07)' },
+    ]},
+    options: {
+      ...baseOpts({ min:0, ticks:{ color:'#999', font:{size:10}, callback:v=>v.toFixed(0)+'%' } }),
+      plugins: {
+        legend: { display: false },
+        annotation: {}
+      }
+    }
+  });
+
+  charts.wallet = new Chart(document.getElementById('walletChart'), {
+    type: 'line',
+    data: { labels: [], datasets: [
+      { label:'Mean',   data:[], borderColor:'#3a5a9b', borderWidth:2, pointRadius:0, fill:false },
+      { label:'Median', data:[], borderColor:'#3a5a9b', borderWidth:1.5, pointRadius:0, fill:false, borderDash:[5,4] },
+    ]},
+    options: baseOpts({ ticks:{ color:'#999', font:{size:10}, callback: v=>'$'+Math.round(v) } })
+  });
+}
+
+// ── Polling ────────────────────────────────────────────────────────────────
+async function poll() {
+  try {
+    const res  = await fetch('/state');
+    const data = await res.json();
+    if (data.records && data.records.length) updateUI(data);
+    if (!data.running && running) {
+      running = false;
+      setRunBtn(false);
+      setStatus('Simulation ended.');
+    }
+  } catch(e) { /* server not ready */ }
+}
+
+function updateUI(data) {
+  const R = data.records;
+  const last = data.last;
+
+  // labels
+  const labels = R.map(r => r.tick);
+
+  function setDs(chart, ...arrays) {
+    arrays.forEach((arr, i) => chart.data.datasets[i].data = arr);
+    chart.data.labels = labels;
+    chart.update('none');
+  }
+
+  setDs(charts.epi,
+    R.map(r=>r.susceptible), R.map(r=>r.exposed),
+    R.map(r=>r.infectious_asymptomatic), R.map(r=>r.infectious_symptomatic),
+    R.map(r=>r.recovered)
+  );
+  setDs(charts.econ, R.map(r=>r.gdp), R.map(r=>r.unemployment_rate_pct));
+  setDs(charts.hc,   R.map(r => r.healthcare_patients / 5)); // /5 → % of 500
+  setDs(charts.wallet, R.map(r=>r.mean_wallet), R.map(r=>r.median_wallet));
+
+  // KPI
+  const active = last.infectious_asymptomatic + last.infectious_symptomatic;
+  setKpi('kpiInfect', active.toLocaleString(), 'infectious agents', active > 1000 ? 'bad' : active > 200 ? 'warn' : '');
+  setKpi('kpiDead',   last.dead.toLocaleString(), 'total', last.dead > 200 ? 'bad' : last.dead > 50 ? 'warn' : '');
+  const hcPct = Math.round(last.healthcare_patients / 5);
+  setKpi('kpiHosp',   hcPct + '%', 'of 500 beds used', last.healthcare_overwhelmed ? 'bad' : hcPct > 70 ? 'warn' : 'good');
+  setKpi('kpiUnemp',  last.unemployment_rate_pct.toFixed(1) + '%', 'of alive population', last.unemployment_rate_pct > 25 ? 'bad' : last.unemployment_rate_pct > 10 ? 'warn' : '');
+  setKpi('kpiBankrupt', last.companies_bankrupt, 'of 200 companies', last.companies_bankrupt > 30 ? 'bad' : last.companies_bankrupt > 10 ? 'warn' : '');
+
+  document.getElementById('dayNum').textContent = data.tick;
+
+  // HC banner
+  document.getElementById('hcBanner').classList.toggle('visible', !!last.healthcare_overwhelmed);
+
+  // Status msg
+  const msgs = [];
+  if (last.healthcare_overwhelmed) msgs.push('Hospital overwhelmed — deaths are rising faster');
+  if (last.companies_bankrupt > 20) msgs.push(`${last.companies_bankrupt} companies bankrupt`);
+  if (last.unemployment_rate_pct > 20) msgs.push(`unemployment at ${last.unemployment_rate_pct.toFixed(0)}%`);
+  if (last.bank_in_crisis) msgs.push('banking crisis — no new loans');
+  setStatus(msgs.length ? '⚠ ' + msgs.join(' · ') : `Day ${data.tick} running…`);
+}
+
+function setKpi(id, val, sub, cls) {
+  const el = document.getElementById(id);
+  el.querySelector('.kpi-val').textContent = val;
+  el.querySelector('.kpi-sub').textContent = sub;
+  el.className = 'kpi' + (cls ? ' '+cls : '');
+}
+
+function setStatus(msg) { document.getElementById('statusMsg').textContent = msg; }
+
+// ── Controls ───────────────────────────────────────────────────────────────
+async function sendPolicy(patch) {
+  Object.assign(policy, patch);
+  await fetch('/policy', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(policy) });
+}
+
+async function sendControl(action, extra) {
+  await fetch('/control', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ action, ...extra }) });
+}
+
+// Lockdown pills
+document.querySelectorAll('.lock-pill').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.lock-pill').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const l = parseInt(btn.dataset.l);
+    sendPolicy({ lockdown: l });
+    const hints = [
+      'No restrictions. Virus spreads freely.',
+      'Light restrictions. Most workers stay home, some don\'t.',
+      'Moderate lockdown. Only essential workers outside.',
+      'Full lockdown. Only poorest agents break rules.',
+    ];
+    document.getElementById('lockdownHint').textContent = hints[l];
+  });
+});
+
+// Mask toggle
+document.getElementById('maskToggle').addEventListener('change', e => sendPolicy({ mask: e.target.checked }));
+
+// Vacc slider
+document.getElementById('vaccSlider').addEventListener('input', e => {
+  const v = parseInt(e.target.value);
+  document.getElementById('vaccVal').textContent = v === 0 ? 'Off' : v + '%';
+  sendPolicy({ vacc_rate: v / 100 });
+});
+
+// Stim slider
+document.getElementById('stimSlider').addEventListener('input', e => {
+  const v = parseInt(e.target.value);
+  document.getElementById('stimVal').textContent = '$' + v;
+  sendPolicy({ stimulus: v });
+});
+
+// Speed pills
+document.querySelectorAll('.speed-pill').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.speed-pill').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    sendControl('speed', { speed: btn.dataset.s });
+  });
+});
+
+function setRunBtn(isRunning) {
+  const btn = document.getElementById('runBtn');
+  btn.textContent = isRunning ? '⏸  Pause' : '▶  Run';
+  btn.classList.toggle('paused', isRunning);
+}
+
+// Run/pause
+document.getElementById('runBtn').addEventListener('click', async () => {
+  if (running) {
+    await sendControl('pause');
+    running = false;
+    setRunBtn(false);
+    setStatus('Paused. Change policies, then press Run to continue.');
+  } else {
+    await sendControl('start');
+    running = true;
+    setRunBtn(true);
+    if (!pollTimer) pollTimer = setInterval(poll, 250);
+    setStatus('Simulation running…');
+  }
+});
+
+// Reset
+document.getElementById('resetBtn').addEventListener('click', async () => {
+  running = false;
+  setRunBtn(false);
+  await sendControl('reset', { policy });
+  // Clear charts
+  Object.values(charts).forEach(c => { c.data.labels=[]; c.data.datasets.forEach(d=>d.data=[]); c.update('none'); });
+  setStatus('Reset. Press Run to start a new simulation.');
+  document.getElementById('dayNum').textContent = '0';
+  document.getElementById('hcBanner').classList.remove('visible');
+  ['kpiInfect','kpiDead','kpiHosp','kpiUnemp','kpiBankrupt'].forEach(id => {
+    document.getElementById(id).className = 'kpi';
+  });
+});
+
+// ── Boot ───────────────────────────────────────────────────────────────────
+initCharts();
+// Start polling so we can show state if sim was already running
+pollTimer = setInterval(poll, 300);
+</script>
+</body>
+</html>
