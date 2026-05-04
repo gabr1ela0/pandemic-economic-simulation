@@ -85,16 +85,26 @@ class AgentPool:
         """
         Returns True for every agent who physically goes to work this tick.
 
-        Under a lockdown the poverty trap (wallet < base_consumption * K)
-        overrides compliance; otherwise an agent complies proportionally to
-        the inverse of their risk_tolerance scaled by lockdown stringency.
+        Symptomatic agents mostly self-isolate but a small fraction still
+        attend (poverty / income pressure). Under lockdown the poverty trap
+        overrides compliance; otherwise agents comply proportionally to the
+        inverse of their risk_tolerance scaled by lockdown stringency.
         """
-        can_work = (
+        symp = self.health_state == HealthState.INFECTIOUS_SYMPTOMATIC
+        non_symp = (
             self.is_alive
             & self.employed
-            & (self.health_state != HealthState.INFECTIOUS_SYMPTOMATIC)
+            & ~symp
             & (self.health_state != HealthState.DEAD)
         )
+        symp_attends = (
+            self.is_alive
+            & self.employed
+            & symp
+            & (self.rng.random(self.n) < CONFIG["SYMPTOMATIC_WORK_ATTENDANCE_FACTOR"])
+        )
+        can_work = non_symp | symp_attends
+
         if lockdown_level == 0:
             return can_work
 
@@ -109,13 +119,22 @@ class AgentPool:
     def at_market_mask(self, lockdown_level: int) -> np.ndarray:
         """
         Returns True for agents who visit markets / public spaces this tick.
-        Symptomatic agents self-isolate; poor agents still go out for essentials.
+        Symptomatic agents mostly self-isolate but a small fraction still
+        venture out for essentials.
         """
-        mobile = (
+        symp = self.health_state == HealthState.INFECTIOUS_SYMPTOMATIC
+        non_symp = (
             self.is_alive
-            & (self.health_state != HealthState.INFECTIOUS_SYMPTOMATIC)
+            & ~symp
             & (self.health_state != HealthState.DEAD)
         )
+        symp_attends = (
+            self.is_alive
+            & symp
+            & (self.rng.random(self.n) < CONFIG["SYMPTOMATIC_MARKET_ATTENDANCE_FACTOR"])
+        )
+        mobile = non_symp | symp_attends
+
         if lockdown_level == 0:
             return mobile
 

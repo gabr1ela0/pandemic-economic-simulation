@@ -106,7 +106,18 @@ Examples:
     if args.batch:
         batch_mode(args)
     else:
-        from dashboard import run
+        try:
+            from dashboard import run
+        except ModuleNotFoundError as exc:
+            if exc.name == "_tkinter":
+                raise SystemExit(
+                    "Tkinter is missing in your Python build, so the dashboard cannot start.\n"
+                    "Install it (Homebrew): brew install python-tk@3.13\n"
+                    "Then run either:\n"
+                    "  python main.py            # dashboard mode\n"
+                    "  python main.py --batch    # headless mode"
+                ) from exc
+            raise
         run()
 
 

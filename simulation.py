@@ -59,8 +59,9 @@ class SimulationEngine:
         self._at_market: np.ndarray = np.zeros(self.agents.n, dtype=bool)
 
         # ── Metrics ───────────────────────────────────────────────
-        self.records:    list[dict] = []
-        self.daily_gdp:  float      = 0.0
+        self.records:        list[dict] = []
+        self.daily_gdp:      float      = 0.0
+        self._rehires_today: int        = 0
 
     # ─────────────────────────────────────────────────────────────────────────
     #  Initialisation helpers
@@ -326,6 +327,38 @@ class SimulationEngine:
             else:
                 company.ticks_struggling = 0
 
+        # ── Re-employment ────────────────────────────────────────
+        # Healthy companies (cash and workforce both above thresholds)
+        # rehire unemployed agents at a low per-tick probability.
+        self._rehires_today = 0
+        unemp_idx = np.where(
+            agents.is_alive & ~agents.employed & (agents.company_id == -1)
+        )[0]
+        if len(unemp_idx) > 0:
+            workforce_ratio = at_work_per_co / np.maximum(1, emp_per_co)
+            eligible = []
+            min_cash = CONFIG["REHIRE_HEALTHY_COMPANY_CASH_MIN"]
+            min_ratio = CONFIG["REHIRE_HEALTHY_WORKFORCE_RATIO"]
+            for i, c in enumerate(self.companies):
+                if (
+                    not c.bankrupt
+                    and not c.is_struggling
+                    and c.cash_balance > min_cash
+                    and workforce_ratio[i] > min_ratio
+                ):
+                    eligible.append(c.company_id)
+            if eligible:
+                eligible_ids = np.array(eligible, dtype=np.int32)
+                hire_roll = self.rng.random(len(unemp_idx))
+                hire_mask = hire_roll < CONFIG["BASE_REHIRE_PROBABILITY"]
+                n_hires = int(hire_mask.sum())
+                if n_hires > 0:
+                    chosen_cos = self.rng.choice(eligible_ids, size=n_hires)
+                    hired_idx = unemp_idx[hire_mask]
+                    agents.company_id[hired_idx] = chosen_cos
+                    agents.employed[hired_idx] = True
+                    self._rehires_today = n_hires
+
     # ─────────────────────────────────────────────────────────────────────────
     #  Phase 3 — Consumption
     # ─────────────────────────────────────────────────────────────────────────
@@ -405,6 +438,7 @@ class SimulationEngine:
             "mean_wallet":              round(self.agents.mean_wallet, 2),
             "median_wallet":            round(self.agents.median_wallet, 2),
             "consumer_demand_index":    round(cdi, 4),
+            "rehires_today":            self._rehires_today,
         })
 
     # ─────────────────────────────────────────────────────────────────────────

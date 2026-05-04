@@ -55,13 +55,23 @@ CONFIG: dict = {
     # Agent ignores lockdown if wallet < base_consumption * this multiplier
     "POVERTY_TRAP_MULTIPLIER": 3,
 
-    #  Labour 
+    #  Labour
     # Active workforce fraction below which company is "Struggling"
     "WORKFORCE_STRUGGLING_THRESHOLD": 0.50,
     # Fraction of workforce fired per tick while struggling AND cash-negative
     "FIRING_PROBABILITY":             0.10,
     # Company cash below this while loan-maxed → bankruptcy (fire all staff)
     "BANKRUPTCY_CASH_THRESHOLD":      -120_000.0,
+    # Per-tick chance an unemployed agent is rehired by a healthy company (~50% over 100 days)
+    "BASE_REHIRE_PROBABILITY":           0.005,
+    # Only companies with cash above this are eligible to hire
+    "REHIRE_HEALTHY_COMPANY_CASH_MIN":   5_000.0,
+    # Only companies with workforce ratio above this are eligible to hire
+    "REHIRE_HEALTHY_WORKFORCE_RATIO":    0.7,
+    # Fraction of symptomatic agents that still attend work (poverty / income pressure)
+    "SYMPTOMATIC_WORK_ATTENDANCE_FACTOR":   0.30,
+    # Fraction of symptomatic agents that still go to market
+    "SYMPTOMATIC_MARKET_ATTENDANCE_FACTOR": 0.10,
 
     #  Banking 
     "BANK_INITIAL_RESERVES":      15_000_000.0,
