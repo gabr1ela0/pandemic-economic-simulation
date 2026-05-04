@@ -1,19 +1,17 @@
 """
-dashboard.py  —  Tkinter visual dashboard for the pandemic simulation.
+dashboard.py  —  Clean Tkinter dashboard for the pandemic simulation.
 
 No extra installs needed. Tkinter ships with Python.
 
 Run via:
-    python main.py          (launches this automatically)
-    python dashboard.py     (direct)
+    python main.py
+    python dashboard.py
 """
 
 from __future__ import annotations
 
 import threading
 import tkinter as tk
-from tkinter import ttk, font as tkfont
-import math
 from typing import Optional
 
 from config import CONFIG
@@ -21,182 +19,131 @@ from entities import Government
 from simulation import SimulationEngine
 
 
-# ── Palette ──────────────────────────────────────────────────────────────────
-BG       = "#f5f4f0"   # window background
-SURFACE  = "#ffffff"   # card / panel background
-BORDER   = "#e0ddd6"
-TEXT     = "#1a1a1a"
-MUTED    = "#888888"
-ACCENT   = "#3a5a9b"   # blue
+# ── Simple Dark Palette ───────────────────────────────────────────────────────
+BG        = "#1e1e1e"
+SURFACE   = "#2d2d2d"
+BORDER    = "#444444"
+TEXT      = "#ffffff"
+TEXT_DIM  = "#888888"
+ACCENT    = "#4fc3f7"
+GREEN     = "#66bb6a"
+YELLOW    = "#ffca28"
+RED       = "#ef5350"
 
-C_SUSC   = "#b0aaa0"
-C_EXPO   = "#e8a020"
-C_ASYMP  = "#e07040"
-C_SYMP   = "#c83030"
-C_RECOV  = "#3a9a6a"
+# Chart colors
+C_GRAY    = "#9e9e9e"
+C_YELLOW  = "#ffca28"
+C_ORANGE  = "#ffa726"
+C_RED     = "#ef5350"
+C_GREEN   = "#66bb6a"
 
-COL_OK   = "#2d8a50"
-COL_WARN = "#d08020"
-COL_BAD  = "#c83030"
-
-
-# ── Tiny canvas chart ─────────────────────────────────────────────────────────
 
 class LineChart(tk.Canvas):
-    """
-    A lightweight canvas-based line chart.  No matplotlib dependency.
-    Supports multiple series, auto-scaling Y, and a shaded area fill
-    for the first series.
-    """
-
-    PAD_L = 52
-    PAD_R = 12
-    PAD_T = 10
-    PAD_B = 28
+    """Simple line chart without overlapping text."""
 
     def __init__(self, parent, title: str, series: list[dict], **kwargs):
-        super().__init__(parent, bg=SURFACE, highlightthickness=0, **kwargs)
-        self.title   = title
-        self.series  = series   # list of {"label": str, "color": str, "data": []}
+        super().__init__(parent, bg=SURFACE, highlightthickness=1, highlightbackground=BORDER, **kwargs)
+        self.title = title
+        self.series = series
         self.bind("<Configure>", lambda e: self.redraw())
 
     def redraw(self):
         self.delete("all")
         w = self.winfo_width()
         h = self.winfo_height()
-        if w < 10 or h < 10:
+        if w < 50 or h < 50:
             return
 
-        pl, pr, pt, pb = self.PAD_L, self.PAD_R, self.PAD_T, self.PAD_B
-        cw = w - pl - pr
-        ch = h - pt - pb
+        pad_l, pad_r, pad_t, pad_b = 55, 15, 30, 30
+        cw = w - pad_l - pad_r
+        ch = h - pad_t - pad_b
 
-        # Title
-        self.create_text(pl, 4, anchor="nw", text=self.title,
-                         fill=MUTED, font=("Helvetica", 8, "bold"))
+        # Title only (no legend in chart area)
+        self.create_text(10, 10, anchor="nw", text=self.title, fill=ACCENT, font=("Arial", 11, "bold"))
 
-        # Gather all data
+        # Get data
         all_data = [v for s in self.series for v in s["data"]]
-        n = max(len(s["data"]) for s in self.series) if self.series else 0
+        n = max((len(s["data"]) for s in self.series), default=0)
+
         if n == 0 or not all_data:
-            self.create_text(w//2, h//2, text="No data yet", fill=MUTED, font=("Helvetica", 9))
+            self.create_text(w // 2, h // 2, text="No data", fill=TEXT_DIM, font=("Arial", 11))
             return
 
-        y_min = 0
-        y_max = max(all_data) * 1.08 or 1
-        x_max = n - 1
+        y_max = max(all_data) * 1.1 or 1
+        x_max = max(1, n - 1)
 
-        def px(i):
-            return pl + (i / max(x_max, 1)) * cw
+        def px(i): return pad_l + (i / x_max) * cw
+        def py(v): return pad_t + ch - (v / y_max) * ch
 
-        def py(v):
-            return pt + ch - ((v - y_min) / (y_max - y_min)) * ch
-
-        # Grid lines + Y labels
-        n_grid = 4
-        for gi in range(n_grid + 1):
-            yv   = y_min + (y_max - y_min) * gi / n_grid
+        # Y axis labels (4 lines)
+        for i in range(5):
+            yv = y_max * i / 4
             ypos = py(yv)
-            self.create_line(pl, ypos, w - pr, ypos, fill=BORDER, dash=(2, 3))
-            label = _fmt_num(yv)
-            self.create_text(pl - 4, ypos, anchor="e", text=label,
-                             fill=MUTED, font=("Helvetica", 7))
+            self.create_line(pad_l, ypos, w - pad_r, ypos, fill="#3a3a3a", dash=(2, 4))
+            self.create_text(pad_l - 5, ypos, anchor="e", text=self._fmt(yv), fill=TEXT_DIM, font=("Arial", 9))
 
-        # X labels (day numbers)
-        tick_every = max(1, n // 6)
-        for i in range(0, n, tick_every):
-            self.create_text(px(i), h - pb + 5, anchor="n",
-                             text=str(i), fill=MUTED, font=("Helvetica", 7))
+        # X axis labels
+        step = max(1, n // 5)
+        for i in range(0, n, step):
+            self.create_text(px(i), h - pad_b + 12, text=str(i), fill=TEXT_DIM, font=("Arial", 9))
 
-        # Axes
-        self.create_line(pl, pt, pl, h - pb, fill=BORDER)
-        self.create_line(pl, h - pb, w - pr, h - pb, fill=BORDER)
-
-        # Series (draw fill first, then lines on top)
-        for si, s in enumerate(self.series):
+        # Draw lines
+        for s in self.series:
             data = s["data"]
-            color = s["color"]
             if len(data) < 2:
                 continue
-            pts = [(px(i), py(v)) for i, v in enumerate(data)]
+            pts = []
+            for i, v in enumerate(data):
+                pts.extend([px(i), py(v)])
+            self.create_line(*pts, fill=s["color"], width=2, smooth=True)
 
-            # Shaded fill for first series only
-            if si == 0:
-                poly = [pl, h - pb]
-                for x, y in pts:
-                    poly += [x, y]
-                poly += [px(len(data) - 1), h - pb]
-                # lighten color
-                self.create_polygon(poly, fill=_lighten(color), outline="")
+    def _fmt(self, v):
+        if v >= 1_000_000:
+            return f"{v/1e6:.1f}M"
+        if v >= 1_000:
+            return f"{v/1e3:.0f}k"
+        return f"{v:.0f}"
 
-            # Line
-            flat = [coord for pt in pts for coord in pt]
-            self.create_line(*flat, fill=color, width=2, smooth=True)
-
-    def set_data(self, series_index: int, data: list):
-        self.series[series_index]["data"] = data
-        self.redraw()
-
-    def set_all(self, data_list: list[list]):
+    def set_all(self, data_list):
         for i, d in enumerate(data_list):
-            self.series[i]["data"] = d
+            if i < len(self.series):
+                self.series[i]["data"] = d
         self.redraw()
 
-
-def _fmt_num(v: float) -> str:
-    if v >= 1_000_000:
-        return f"{v/1_000_000:.1f}M"
-    if v >= 1_000:
-        return f"{v/1_000:.0f}k"
-    return f"{v:.0f}"
-
-
-def _lighten(hex_color: str, alpha: float = 0.15) -> str:
-    """Blend a hex color toward white at the given alpha."""
-    h = hex_color.lstrip("#")
-    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
-    r = int(r + (255 - r) * (1 - alpha))
-    g = int(g + (255 - g) * (1 - alpha))
-    b = int(b + (255 - b) * (1 - alpha))
-    return f"#{r:02x}{g:02x}{b:02x}"
-
-
-# ── KPI tile ──────────────────────────────────────────────────────────────────
 
 class KpiTile(tk.Frame):
-    def __init__(self, parent, label: str, **kwargs):
-        super().__init__(parent, bg=SURFACE, **kwargs)
-        self._label_text = label
-        tk.Label(self, text=label.upper(), bg=SURFACE, fg=MUTED,
-                 font=("Helvetica", 8, "bold")).pack(anchor="w", padx=12, pady=(10, 0))
-        self._val  = tk.Label(self, text="—", bg=SURFACE, fg=TEXT, font=("Helvetica", 22, "bold"))
-        self._val.pack(anchor="w", padx=12)
-        self._sub  = tk.Label(self, text="", bg=SURFACE, fg=MUTED, font=("Helvetica", 9))
-        self._sub.pack(anchor="w", padx=12, pady=(0, 10))
+    def __init__(self, parent, label: str):
+        super().__init__(parent, bg=SURFACE, padx=10, pady=8)
+        self.configure(highlightbackground=BORDER, highlightthickness=1)
+
+        tk.Label(self, text=label, bg=SURFACE, fg=ACCENT, font=("Arial", 9, "bold")).pack(anchor="w")
+        self._val = tk.Label(self, text="—", bg=SURFACE, fg=TEXT, font=("Arial", 22, "bold"))
+        self._val.pack(anchor="w")
+        self._sub = tk.Label(self, text="", bg=SURFACE, fg=TEXT_DIM, font=("Arial", 9))
+        self._sub.pack(anchor="w")
 
     def update(self, val: str, sub: str = "", status: str = ""):
-        color = {"bad": COL_BAD, "warn": COL_WARN, "good": COL_OK}.get(status, TEXT)
+        color = {"bad": RED, "warn": YELLOW, "good": GREEN}.get(status, TEXT)
         self._val.config(text=val, fg=color)
         self._sub.config(text=sub)
 
 
-# ── Policy widgets ────────────────────────────────────────────────────────────
-
 class LockdownPicker(tk.Frame):
-    LABELS = ["None", "Light", "Moderate", "Full"]
-    COLORS = [ACCENT, "#b06a10", "#b04010", COL_BAD]
+    LABELS = ["None", "Light", "Mod", "Full"]
 
-    def __init__(self, parent, on_change, **kwargs):
-        super().__init__(parent, bg=SURFACE, **kwargs)
+    def __init__(self, parent, on_change):
+        super().__init__(parent, bg=SURFACE)
         self._on_change = on_change
         self._level = 0
-        self._btns  = []
+        self._btns = []
+
         for i, lbl in enumerate(self.LABELS):
-            b = tk.Button(self, text=lbl, relief="flat", bd=0,
-                          font=("Helvetica", 9, "bold"),
-                          cursor="hand2", padx=6, pady=4,
-                          command=lambda n=i: self._pick(n))
-            b.grid(row=0, column=i, padx=2, pady=0)
+            b = tk.Button(
+                self, text=lbl, width=5, relief="flat",
+                font=("Arial", 10, "bold"), pady=5,
+                command=lambda n=i: self._pick(n)
+            )
+            b.pack(side="left", padx=2)
             self._btns.append(b)
         self._refresh()
 
@@ -206,52 +153,44 @@ class LockdownPicker(tk.Frame):
         self._refresh()
 
     def _refresh(self):
+        colors = [GREEN, YELLOW, C_ORANGE, RED]
         for i, b in enumerate(self._btns):
             if i == self._level:
-                b.config(bg=self.COLORS[i], fg="white")
+                b.config(bg=colors[i], fg="#000000")
             else:
-                b.config(bg=BORDER, fg=MUTED)
+                b.config(bg="#444444", fg=TEXT_DIM)
 
     def get(self):
         return self._level
 
 
-# ── Main dashboard window ────────────────────────────────────────────────────
-
 class Dashboard(tk.Tk):
-
-    TICK_MS   = 120   # ms between ticks at 1× speed
-    SPEED_MAP = {"0.5×": 240, "1×": 120, "3×": 40, "10×": 8}
+    SPEEDS = {"0.25x": 400, "0.5x": 200, "1x": 100, "2x": 50, "5x": 20}
 
     def __init__(self):
         super().__init__()
-        self.title("Pandemic Simulation")
+        self.title("Outbreak Command")
         self.configure(bg=BG)
-        self.geometry("1180x700")
-        self.minsize(900, 580)
+        self.geometry("1200x750")
+        self.minsize(900, 600)
 
-        self._gov: Optional[Government]        = None
-        self._sim: Optional[SimulationEngine]  = None
-        self._running  = False
-        self._tick_ms  = self.TICK_MS
+        self._gov = None
+        self._sim = None
+        self._running = False
+        self._tick_ms = 100
         self._after_id = None
-        self._lock     = threading.Lock()
+        self._lock = threading.Lock()
 
         self._build_ui()
         self._new_sim()
 
-    # ── UI construction ───────────────────────────────────────────────────────
-
     def _build_ui(self):
-        # ── Sidebar ──
-        sidebar = tk.Frame(self, bg=SURFACE, width=230)
+        # Sidebar
+        sidebar = tk.Frame(self, bg=SURFACE, width=220)
         sidebar.pack(side="left", fill="y")
         sidebar.pack_propagate(False)
 
-        # Separator line
-        tk.Frame(self, bg=BORDER, width=1).pack(side="left", fill="y")
-
-        # ── Main area ──
+        # Main
         main = tk.Frame(self, bg=BG)
         main.pack(side="left", fill="both", expand=True)
 
@@ -259,322 +198,210 @@ class Dashboard(tk.Tk):
         self._build_main(main)
 
     def _build_sidebar(self, parent):
-        pad = dict(padx=16, pady=0)
-
-        # Brand
-        tk.Label(parent, text="Pandemic Sim", bg=SURFACE, fg=TEXT,
-                 font=("Helvetica", 13, "bold")).pack(anchor="w", padx=16, pady=(16, 0))
-        tk.Label(parent, text="10,000 agents · 200 companies", bg=SURFACE, fg=MUTED,
-                 font=("Helvetica", 9)).pack(anchor="w", padx=16, pady=(0, 16))
-
-        tk.Frame(parent, bg=BORDER, height=1).pack(fill="x")
-
-        def section(text):
-            tk.Label(parent, text=text, bg=SURFACE, fg=MUTED,
-                     font=("Helvetica", 8, "bold")).pack(anchor="w", padx=16, pady=(14, 4))
-
-        # ── Lockdown ──
-        section("LOCKDOWN LEVEL")
-        self._lockdown = LockdownPicker(parent, self._on_lockdown)
-        self._lockdown.pack(anchor="w", padx=16, pady=(0, 4))
-        self._lock_hint = tk.Label(parent, text="No restrictions. Virus spreads freely.",
-                                   bg=SURFACE, fg=MUTED, font=("Helvetica", 8),
-                                   wraplength=200, justify="left")
-        self._lock_hint.pack(anchor="w", padx=16, pady=(0, 4))
-
-        tk.Frame(parent, bg=BORDER, height=1).pack(fill="x", pady=4)
-
-        # ── Mask ──
-        section("MASK MANDATE  (−50% spread)")
-        mask_row = tk.Frame(parent, bg=SURFACE)
-        mask_row.pack(anchor="w", padx=16)
-        self._mask_var = tk.BooleanVar(value=False)
-        self._mask_btn = tk.Checkbutton(mask_row, variable=self._mask_var, bg=SURFACE,
-                                        activebackground=SURFACE, command=self._on_mask,
-                                        relief="flat", cursor="hand2")
-        self._mask_btn.pack(side="left")
-        tk.Label(mask_row, text="Enable", bg=SURFACE, fg=TEXT,
-                 font=("Helvetica", 10)).pack(side="left")
-
-        tk.Frame(parent, bg=BORDER, height=1).pack(fill="x", pady=8)
-
-        # ── Vaccination ──
-        section("VACCINATION ROLLOUT")
-        self._vacc_var = tk.IntVar(value=0)
-        self._vacc_lbl = tk.Label(parent, text="Off", bg=SURFACE, fg=ACCENT,
-                                  font=("Helvetica", 10, "bold"))
-        self._vacc_lbl.pack(anchor="w", padx=16)
-        tk.Scale(parent, from_=0, to=100, orient="horizontal", variable=self._vacc_var,
-                 bg=SURFACE, fg=TEXT, troughcolor=BORDER, highlightthickness=0,
-                 showvalue=False, command=self._on_vacc,
-                 length=196, sliderlength=14, width=8).pack(padx=16)
-
-        tk.Frame(parent, bg=BORDER, height=1).pack(fill="x", pady=4)
-
-        # ── Stimulus ──
-        section("DAILY STIMULUS (to poor agents)")
-        self._stim_var = tk.IntVar(value=0)
-        self._stim_lbl = tk.Label(parent, text="$0", bg=SURFACE, fg=ACCENT,
-                                  font=("Helvetica", 10, "bold"))
-        self._stim_lbl.pack(anchor="w", padx=16)
-        tk.Scale(parent, from_=0, to=300, orient="horizontal", variable=self._stim_var,
-                 bg=SURFACE, fg=TEXT, troughcolor=BORDER, highlightthickness=0,
-                 showvalue=False, command=self._on_stim,
-                 length=196, sliderlength=14, width=8).pack(padx=16)
-
-        tk.Frame(parent, bg=BORDER, height=1).pack(fill="x", pady=8)
-
-        # ── Speed ──
-        section("SPEED")
-        speed_row = tk.Frame(parent, bg=SURFACE)
-        speed_row.pack(anchor="w", padx=16)
-        self._speed_btns = {}
-        for label in self.SPEED_MAP:
-            b = tk.Button(speed_row, text=label, relief="flat", bd=0,
-                          font=("Helvetica", 9), cursor="hand2", padx=6, pady=3,
-                          command=lambda l=label: self._on_speed(l))
-            b.pack(side="left", padx=2)
-            self._speed_btns[label] = b
-        self._on_speed("1×")
-
-        tk.Frame(parent, bg=BORDER, height=1).pack(fill="x", pady=8)
-
-        # ── Run / Reset ──
-        self._run_btn = tk.Button(parent, text="▶  Run", bg=ACCENT, fg="white",
-                                  relief="flat", bd=0, font=("Helvetica", 11, "bold"),
-                                  cursor="hand2", pady=8, command=self._on_run)
-        self._run_btn.pack(fill="x", padx=16, pady=(0, 6))
-
-        tk.Button(parent, text="↺  Reset", bg=BORDER, fg=MUTED,
-                  relief="flat", bd=0, font=("Helvetica", 9), cursor="hand2",
-                  pady=6, command=self._on_reset).pack(fill="x", padx=16)
-
-        # ── Legend ──
+        # Title
+        tk.Label(parent, text="OUTBREAK", bg=SURFACE, fg=ACCENT, font=("Arial", 16, "bold")).pack(pady=(15, 0))
+        tk.Label(parent, text="Command Center", bg=SURFACE, fg=TEXT_DIM, font=("Arial", 10)).pack()
         tk.Frame(parent, bg=BORDER, height=1).pack(fill="x", pady=10)
-        section("CHART COLOURS")
-        for color, label in [
-            (C_SUSC,  "Susceptible"),
-            (C_EXPO,  "Exposed (incubating)"),
-            (C_ASYMP, "Infectious · no symptoms"),
-            (C_SYMP,  "Infectious · symptomatic"),
-            (C_RECOV, "Recovered"),
-        ]:
+
+        # Lockdown
+        tk.Label(parent, text="LOCKDOWN", bg=SURFACE, fg=ACCENT, font=("Arial", 10, "bold")).pack(anchor="w", padx=10)
+        self._lockdown = LockdownPicker(parent, self._on_lockdown)
+        self._lockdown.pack(padx=10, pady=5, anchor="w")
+
+        # Mask
+        tk.Frame(parent, bg=BORDER, height=1).pack(fill="x", pady=8)
+        mask_frame = tk.Frame(parent, bg=SURFACE)
+        mask_frame.pack(fill="x", padx=10)
+        self._mask_var = tk.BooleanVar()
+        tk.Checkbutton(
+            mask_frame, text="Mask Mandate", variable=self._mask_var,
+            bg=SURFACE, fg=TEXT, selectcolor=SURFACE, activebackground=SURFACE,
+            font=("Arial", 10), command=self._on_mask
+        ).pack(anchor="w")
+
+        # Vaccination
+        tk.Frame(parent, bg=BORDER, height=1).pack(fill="x", pady=8)
+        tk.Label(parent, text="VACCINATION", bg=SURFACE, fg=ACCENT, font=("Arial", 10, "bold")).pack(anchor="w", padx=10)
+        self._vacc_var = tk.IntVar(value=0)
+        self._vacc_lbl = tk.Label(parent, text="0%", bg=SURFACE, fg=GREEN, font=("Arial", 11, "bold"))
+        self._vacc_lbl.pack(anchor="w", padx=10)
+        tk.Scale(
+            parent, from_=0, to=100, orient="horizontal", variable=self._vacc_var,
+            bg=SURFACE, fg=TEXT, troughcolor="#444", highlightthickness=0,
+            showvalue=False, command=self._on_vacc, length=190
+        ).pack(padx=10)
+
+        # Stimulus
+        tk.Frame(parent, bg=BORDER, height=1).pack(fill="x", pady=8)
+        tk.Label(parent, text="STIMULUS", bg=SURFACE, fg=ACCENT, font=("Arial", 10, "bold")).pack(anchor="w", padx=10)
+        self._stim_var = tk.IntVar(value=0)
+        self._stim_lbl = tk.Label(parent, text="$0", bg=SURFACE, fg=GREEN, font=("Arial", 11, "bold"))
+        self._stim_lbl.pack(anchor="w", padx=10)
+        tk.Scale(
+            parent, from_=0, to=200, orient="horizontal", variable=self._stim_var,
+            bg=SURFACE, fg=TEXT, troughcolor="#444", highlightthickness=0,
+            showvalue=False, command=self._on_stim, length=190
+        ).pack(padx=10)
+
+        # Speed
+        tk.Frame(parent, bg=BORDER, height=1).pack(fill="x", pady=8)
+        tk.Label(parent, text="SPEED", bg=SURFACE, fg=ACCENT, font=("Arial", 10, "bold")).pack(anchor="w", padx=10)
+        speed_frame = tk.Frame(parent, bg=SURFACE)
+        speed_frame.pack(padx=10, pady=5, anchor="w")
+        self._speed_btns = {}
+        for lbl in self.SPEEDS:
+            b = tk.Button(
+                speed_frame, text=lbl, width=4, relief="flat",
+                font=("Arial", 9), pady=3,
+                command=lambda l=lbl: self._on_speed(l)
+            )
+            b.pack(side="left", padx=1)
+            self._speed_btns[lbl] = b
+        self._on_speed("1x")
+
+        # Buttons
+        tk.Frame(parent, bg=BORDER, height=1).pack(fill="x", pady=8)
+
+        self._run_btn = tk.Button(
+            parent, text="▶ RUN", bg=GREEN, fg="#000", relief="flat",
+            font=("Arial", 12, "bold"), pady=8, command=self._on_run
+        )
+        self._run_btn.pack(fill="x", padx=10, pady=3)
+
+        tk.Button(
+            parent, text="⏭ NEXT DAY", bg=YELLOW, fg="#000", relief="flat",
+            font=("Arial", 10, "bold"), pady=6, command=self._on_step
+        ).pack(fill="x", padx=10, pady=3)
+
+        tk.Button(
+            parent, text="↺ RESET", bg="#444", fg=TEXT, relief="flat",
+            font=("Arial", 10), pady=5, command=self._on_reset
+        ).pack(fill="x", padx=10, pady=3)
+
+        # Legend
+        tk.Frame(parent, bg=BORDER, height=1).pack(fill="x", pady=8)
+        tk.Label(parent, text="LEGEND", bg=SURFACE, fg=ACCENT, font=("Arial", 10, "bold")).pack(anchor="w", padx=10)
+        for color, name in [(C_GRAY, "Susceptible"), (C_YELLOW, "Exposed"), (C_ORANGE, "Asympt"), (C_RED, "Sympt"), (C_GREEN, "Recovered")]:
             row = tk.Frame(parent, bg=SURFACE)
-            row.pack(anchor="w", padx=16, pady=1)
-            tk.Label(row, text="■", fg=color, bg=SURFACE,
-                     font=("Helvetica", 10)).pack(side="left")
-            tk.Label(row, text=label, fg=MUTED, bg=SURFACE,
-                     font=("Helvetica", 9)).pack(side="left", padx=4)
+            row.pack(anchor="w", padx=10, pady=1)
+            tk.Label(row, text="■", bg=SURFACE, fg=color, font=("Arial", 10)).pack(side="left")
+            tk.Label(row, text=name, bg=SURFACE, fg=TEXT_DIM, font=("Arial", 9)).pack(side="left", padx=4)
 
     def _build_main(self, parent):
-        # ── KPI strip ──
-        kpi_bar = tk.Frame(parent, bg=SURFACE)
-        kpi_bar.pack(fill="x")
-        tk.Frame(parent, bg=BORDER, height=1).pack(fill="x")
+        # KPI bar
+        kpi_frame = tk.Frame(parent, bg=BG)
+        kpi_frame.pack(fill="x", padx=8, pady=8)
 
         self._kpis = {}
-        kpi_defs = [
-            ("cases",     "Active Cases"),
-            ("dead",      "Deaths"),
-            ("hospital",  "Hospital"),
-            ("unemp",     "Unemployment"),
-            ("bankrupt",  "Bankrupt Firms"),
-        ]
-        for i, (key, label) in enumerate(kpi_defs):
-            tile = KpiTile(kpi_bar, label)
-            tile.pack(side="left", fill="both", expand=True)
-            if i < len(kpi_defs) - 1:
-                tk.Frame(kpi_bar, bg=BORDER, width=1).pack(side="left", fill="y")
+        for key, label in [("cases", "ACTIVE"), ("dead", "DEATHS"), ("hosp", "HOSPITAL"), ("unemp", "UNEMP"), ("bank", "BANKRUPT")]:
+            tile = KpiTile(kpi_frame, label)
+            tile.pack(side="left", fill="both", expand=True, padx=2)
             self._kpis[key] = tile
 
-        # ── HC overwhelmed banner ──
-        self._hc_banner = tk.Label(parent,
-            text="⚕  Hospital overwhelmed — mortality rate doubled",
-            bg="#fde8e8", fg=COL_BAD, font=("Helvetica", 10, "bold"), pady=5)
-        # Not packed yet — shown on demand
+        # Warning banner
+        self._warning = tk.Label(parent, text="⚠ HOSPITAL OVERWHELMED", bg="#b71c1c", fg="#fff", font=("Arial", 11, "bold"), pady=5)
 
-        # ── Charts 2×2 ──
-        charts_frame = tk.Frame(parent, bg=BG)
-        charts_frame.pack(fill="both", expand=True)
-        charts_frame.columnconfigure(0, weight=1)
-        charts_frame.columnconfigure(1, weight=1)
-        charts_frame.rowconfigure(0, weight=1)
-        charts_frame.rowconfigure(1, weight=1)
+        # Charts
+        charts = tk.Frame(parent, bg=BG)
+        charts.pack(fill="both", expand=True, padx=8, pady=4)
+        charts.columnconfigure(0, weight=1)
+        charts.columnconfigure(1, weight=1)
+        charts.rowconfigure(0, weight=1)
+        charts.rowconfigure(1, weight=1)
 
         self._charts = {}
+        self._charts["epi"] = LineChart(charts, "INFECTIONS", [
+            {"label": "Sus", "color": C_GRAY, "data": []},
+            {"label": "Exp", "color": C_YELLOW, "data": []},
+            {"label": "Asy", "color": C_ORANGE, "data": []},
+            {"label": "Sym", "color": C_RED, "data": []},
+            {"label": "Rec", "color": C_GREEN, "data": []},
+        ])
+        self._charts["epi"].grid(row=0, column=0, sticky="nsew", padx=2, pady=2)
 
-        # Epidemic
-        self._charts["epi"] = LineChart(
-            charts_frame, title="WHO'S INFECTED?",
-            series=[
-                {"label": "Susceptible",  "color": C_SUSC,  "data": []},
-                {"label": "Exposed",      "color": C_EXPO,  "data": []},
-                {"label": "Asymptomatic", "color": C_ASYMP, "data": []},
-                {"label": "Symptomatic",  "color": C_SYMP,  "data": []},
-                {"label": "Recovered",    "color": C_RECOV, "data": []},
-            ]
-        )
-        self._charts["epi"].grid(row=0, column=0, sticky="nsew",
-                                  padx=(0,1), pady=(0,1))
+        self._charts["gdp"] = LineChart(charts, "GDP", [{"label": "GDP", "color": ACCENT, "data": []}])
+        self._charts["gdp"].grid(row=0, column=1, sticky="nsew", padx=2, pady=2)
 
-        # Economy — GDP only (simple, readable)
-        self._charts["gdp"] = LineChart(
-            charts_frame, title="DAILY GDP",
-            series=[{"label": "GDP", "color": ACCENT, "data": []}]
-        )
-        self._charts["gdp"].grid(row=0, column=1, sticky="nsew",
-                                  padx=(1,0), pady=(0,1))
+        self._charts["hosp"] = LineChart(charts, "HOSPITAL %", [{"label": "%", "color": C_RED, "data": []}])
+        self._charts["hosp"].grid(row=1, column=0, sticky="nsew", padx=2, pady=2)
 
-        # Hospital
-        self._charts["hc"] = LineChart(
-            charts_frame, title="HOSPITAL PRESSURE  (% of 500 beds)",
-            series=[{"label": "Occupancy %", "color": C_SYMP, "data": []}]
-        )
-        self._charts["hc"].grid(row=1, column=0, sticky="nsew",
-                                 padx=(0,1), pady=(1,0))
+        self._charts["wealth"] = LineChart(charts, "WEALTH", [
+            {"label": "Mean", "color": ACCENT, "data": []},
+            {"label": "Median", "color": C_GREEN, "data": []},
+        ])
+        self._charts["wealth"].grid(row=1, column=1, sticky="nsew", padx=2, pady=2)
 
-        # Wallets
-        self._charts["wallet"] = LineChart(
-            charts_frame, title="AGENT WEALTH  (mean wallet $)",
-            series=[{"label": "Mean wallet", "color": C_RECOV, "data": []}]
-        )
-        self._charts["wallet"].grid(row=1, column=1, sticky="nsew",
-                                     padx=(1,0), pady=(1,0))
-
-        # ── Status bar ──
-        tk.Frame(parent, bg=BORDER, height=1).pack(fill="x")
-        status_bar = tk.Frame(parent, bg=SURFACE)
-        status_bar.pack(fill="x")
-        self._status_lbl = tk.Label(status_bar, text="Ready — press Run to start.",
-                                     bg=SURFACE, fg=MUTED, font=("Helvetica", 9),
-                                     anchor="w")
-        self._status_lbl.pack(side="left", padx=12, pady=6)
-        self._day_lbl = tk.Label(status_bar, text="Day 0",
-                                  bg=SURFACE, fg=TEXT, font=("Helvetica", 9, "bold"))
-        self._day_lbl.pack(side="right", padx=12, pady=6)
-
-    # ── Simulation lifecycle ──────────────────────────────────────────────────
+        # Status bar
+        status = tk.Frame(parent, bg=SURFACE)
+        status.pack(fill="x")
+        self._status = tk.Label(status, text="Ready", bg=SURFACE, fg=TEXT_DIM, font=("Arial", 10), anchor="w")
+        self._status.pack(side="left", padx=10, pady=8)
+        self._day = tk.Label(status, text="DAY 0", bg=SURFACE, fg=ACCENT, font=("Arial", 12, "bold"))
+        self._day.pack(side="right", padx=10, pady=8)
 
     def _new_sim(self):
         self._gov = Government()
-        self._sim = SimulationEngine(government=self._gov,
-                                     seed=CONFIG["RANDOM_SEED"])
-        self._apply_current_policy()
+        self._sim = SimulationEngine(government=self._gov, seed=CONFIG["RANDOM_SEED"])
 
-    def _apply_current_policy(self):
-        if self._gov is None:
-            return
-        self._gov.set_lockdown(self._lockdown.get())
-        self._gov.set_mask_mandate(self._mask_var.get())
-        self._gov.set_vaccination_rate(self._vacc_var.get() / 100)
-        self._gov.set_stimulus(float(self._stim_var.get()))
-
-    def _tick_and_schedule(self):
-        """Run one simulation tick then schedule the next."""
-        if not self._running:
-            return
+    def _tick_once(self):
         with self._lock:
             self._sim.tick()
         self._update_ui()
-        # Check for natural end
-        last = self._sim.records[-1] if self._sim.records else None
-        if last:
-            alive = last["infectious_asymptomatic"] + last["infectious_symptomatic"] + last["exposed"]
-            if (alive == 0 and self._sim.tick_num > 30) or self._sim.tick_num >= CONFIG["NUM_TICKS"]:
-                self._running = False
-                self._run_btn.config(text="▶  Run", bg=ACCENT)
-                self._set_status("Simulation ended.")
-                return
-        self._after_id = self.after(self._tick_ms, self._tick_and_schedule)
 
-    # ── UI update ─────────────────────────────────────────────────────────────
+    def _tick_loop(self):
+        if not self._running:
+            return
+        self._tick_once()
+        r = self._sim.records[-1] if self._sim.records else None
+        if r:
+            active = r["exposed"] + r["infectious_asymptomatic"] + r["infectious_symptomatic"]
+            if (active == 0 and self._sim.tick_num > 30) or self._sim.tick_num >= CONFIG["NUM_TICKS"]:
+                self._running = False
+                self._run_btn.config(text="▶ RUN", bg=GREEN)
+                self._status.config(text="Simulation complete")
+                return
+        self._after_id = self.after(self._tick_ms, self._tick_loop)
 
     def _update_ui(self):
-        records = self._sim.records
-        if not records:
+        if not self._sim.records:
             return
+        r = self._sim.records[-1]
+        R = self._sim.records[-365:]
 
-        last = records[-1]
-
-        # Charts — slice to last 365 points
-        R = records[-365:]
-
+        # Charts
         self._charts["epi"].set_all([
-            [r["susceptible"]             for r in R],
-            [r["exposed"]                 for r in R],
-            [r["infectious_asymptomatic"] for r in R],
-            [r["infectious_symptomatic"]  for r in R],
-            [r["recovered"]               for r in R],
+            [x["susceptible"] for x in R],
+            [x["exposed"] for x in R],
+            [x["infectious_asymptomatic"] for x in R],
+            [x["infectious_symptomatic"] for x in R],
+            [x["recovered"] for x in R],
         ])
-        self._charts["gdp"].set_all([[r["gdp"] for r in R]])
-        self._charts["hc"].set_all(
-            [[r["healthcare_patients"] / max(1, r["healthcare_capacity"]) * 100 for r in R]]
-        )
-        self._charts["wallet"].set_all([[r["mean_wallet"] for r in R]])
+        self._charts["gdp"].set_all([[x["gdp"] for x in R]])
+        self._charts["hosp"].set_all([[x["healthcare_patients"] / max(1, x["healthcare_capacity"]) * 100 for x in R]])
+        self._charts["wealth"].set_all([[x["mean_wallet"] for x in R], [x["median_wallet"] for x in R]])
 
         # KPIs
-        active = last["infectious_asymptomatic"] + last["infectious_symptomatic"]
-        self._kpis["cases"].update(
-            f"{active:,}",
-            f"{last['infectious_symptomatic']:,} symptomatic",
-            "bad" if active > 1000 else "warn" if active > 200 else ""
-        )
-        self._kpis["dead"].update(
-            f"{last['dead']:,}", "total deaths",
-            "bad" if last["dead"] > 200 else "warn" if last["dead"] > 50 else ""
-        )
-        hc_pct = round(last["healthcare_patients"] / max(1, last["healthcare_capacity"]) * 100)
-        self._kpis["hospital"].update(
-            f"{hc_pct}%", "of 500 beds used",
-            "bad" if last["healthcare_overwhelmed"] else "warn" if hc_pct > 70 else "good"
-        )
-        self._kpis["unemp"].update(
-            f"{last['unemployment_rate_pct']:.1f}%", "of alive population",
-            "bad" if last["unemployment_rate_pct"] > 25 else "warn" if last["unemployment_rate_pct"] > 10 else ""
-        )
-        self._kpis["bankrupt"].update(
-            str(last["companies_bankrupt"]), "of 200 companies",
-            "bad" if last["companies_bankrupt"] > 30 else "warn" if last["companies_bankrupt"] > 10 else ""
-        )
+        active = r["infectious_asymptomatic"] + r["infectious_symptomatic"]
+        self._kpis["cases"].update(f"{active:,}", f"{r['infectious_symptomatic']:,} sympt", "bad" if active > 1000 else "warn" if active > 200 else "")
+        self._kpis["dead"].update(f"{r['dead']:,}", "", "bad" if r["dead"] > 200 else "warn" if r["dead"] > 50 else "")
+        hc = round(r["healthcare_patients"] / max(1, r["healthcare_capacity"]) * 100)
+        self._kpis["hosp"].update(f"{hc}%", f"{r['healthcare_patients']}/{r['healthcare_capacity']}", "bad" if r["healthcare_overwhelmed"] else "warn" if hc > 70 else "good")
+        self._kpis["unemp"].update(f"{r['unemployment_rate_pct']:.1f}%", "", "bad" if r["unemployment_rate_pct"] > 25 else "warn" if r["unemployment_rate_pct"] > 10 else "")
+        self._kpis["bank"].update(str(r["companies_bankrupt"]), "of 200", "bad" if r["companies_bankrupt"] > 30 else "warn" if r["companies_bankrupt"] > 10 else "")
 
-        # Day counter
-        self._day_lbl.config(text=f"Day {self._sim.tick_num}")
+        self._day.config(text=f"DAY {self._sim.tick_num}")
 
-        # HC banner
-        if last["healthcare_overwhelmed"]:
-            self._hc_banner.pack(fill="x", before=self._hc_banner.master.winfo_children()[0]
-                                  if self._hc_banner.master.winfo_children() else None)
+        if r["healthcare_overwhelmed"]:
+            self._warning.pack(fill="x", before=self._warning.master.winfo_children()[1])
         else:
-            self._hc_banner.pack_forget()
+            self._warning.pack_forget()
 
-        # Status message
-        msgs = []
-        if last["healthcare_overwhelmed"]:
-            msgs.append("Hospital overwhelmed — deaths rising")
-        if last["companies_bankrupt"] > 20:
-            msgs.append(f"{last['companies_bankrupt']} firms bankrupt")
-        if last["unemployment_rate_pct"] > 20:
-            msgs.append(f"unemployment {last['unemployment_rate_pct']:.0f}%")
-        if last["bank_in_crisis"]:
-            msgs.append("banking crisis")
-        self._set_status("⚠  " + " · ".join(msgs) if msgs else f"Day {self._sim.tick_num} running…")
+        if self._running:
+            self._status.config(text=f"Day {self._sim.tick_num} running...")
 
-    def _set_status(self, msg: str):
-        self._status_lbl.config(text=msg)
-
-    # ── Policy callbacks ──────────────────────────────────────────────────────
-
-    LOCK_HINTS = [
-        "No restrictions. Virus spreads freely.",
-        "Light restrictions. Some workers stay home.",
-        "Moderate lockdown. Only essential workers outside.",
-        "Full lockdown. Only the poorest break the rules.",
-    ]
-
-    def _on_lockdown(self, level: int):
+    def _on_lockdown(self, level):
         if self._gov:
             self._gov.set_lockdown(level)
-        self._lock_hint.config(text=self.LOCK_HINTS[level])
 
     def _on_mask(self):
         if self._gov:
@@ -582,7 +409,7 @@ class Dashboard(tk.Tk):
 
     def _on_vacc(self, val):
         v = int(float(val))
-        self._vacc_lbl.config(text="Off" if v == 0 else f"{v}%")
+        self._vacc_lbl.config(text=f"{v}%" if v else "Off")
         if self._gov:
             self._gov.set_vaccination_rate(v / 100)
 
@@ -592,50 +419,51 @@ class Dashboard(tk.Tk):
         if self._gov:
             self._gov.set_stimulus(float(v))
 
-    def _on_speed(self, label: str):
-        self._tick_ms = self.SPEED_MAP[label]
-        for lbl, btn in self._speed_btns.items():
-            btn.config(bg=ACCENT if lbl == label else BORDER,
-                       fg="white" if lbl == label else MUTED)
+    def _on_speed(self, label):
+        self._tick_ms = self.SPEEDS[label]
+        for l, b in self._speed_btns.items():
+            b.config(bg=ACCENT if l == label else "#444", fg="#000" if l == label else TEXT_DIM)
 
     def _on_run(self):
         if self._running:
-            # Pause
             self._running = False
             if self._after_id:
                 self.after_cancel(self._after_id)
-            self._run_btn.config(text="▶  Run", bg=ACCENT)
-            self._set_status("Paused — change policies and press Run to continue.")
+            self._run_btn.config(text="▶ RUN", bg=GREEN)
+            self._status.config(text="Paused")
         else:
-            # Start / resume
             self._running = True
-            self._run_btn.config(text="⏸  Pause", bg="#555555")
-            self._tick_and_schedule()
+            self._run_btn.config(text="⏸ PAUSE", bg="#666")
+            self._tick_loop()
+
+    def _on_step(self):
+        if self._running:
+            self._running = False
+            if self._after_id:
+                self.after_cancel(self._after_id)
+            self._run_btn.config(text="▶ RUN", bg=GREEN)
+        self._tick_once()
+        self._status.config(text=f"Day {self._sim.tick_num}")
 
     def _on_reset(self):
         self._running = False
         if self._after_id:
             self.after_cancel(self._after_id)
         self._new_sim()
-        self._run_btn.config(text="▶  Run", bg=ACCENT)
-        # Clear charts
+        self._run_btn.config(text="▶ RUN", bg=GREEN)
         for c in self._charts.values():
             for s in c.series:
                 s["data"] = []
             c.redraw()
-        # Reset KPIs
-        for tile in self._kpis.values():
-            tile.update("—", "")
-        self._day_lbl.config(text="Day 0")
-        self._hc_banner.pack_forget()
-        self._set_status("Reset — press Run to start a new simulation.")
+        for k in self._kpis.values():
+            k.update("—", "")
+        self._day.config(text="DAY 0")
+        self._warning.pack_forget()
+        self._status.config(text="Reset")
 
-
-# ── Entry point ───────────────────────────────────────────────────────────────
 
 def run():
-    app = Dashboard()
-    app.mainloop()
+    Dashboard().mainloop()
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@
 """
 Entry point.
 
-Default → opens the visual dashboard (pure Python, no installs needed).
+Default → opens the browser game-style dashboard.
 Batch   → headless CSV run, no window.
 
 Usage
