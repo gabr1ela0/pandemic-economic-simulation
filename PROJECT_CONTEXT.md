@@ -22,8 +22,8 @@ A high-performance stochastic agent-based simulation modelling a pandemic and ec
 | `agents.py` | `AgentPool` class — all 10,000 agents as NumPy arrays (vectorised). |
 | `entities.py` | `Government`, `Banks`, `HealthcareDepartment`, `Company` macro-entities. |
 | `simulation.py` | `SimulationEngine` — master tick loop with 5 ordered phases. |
-| `main.py` | CLI entry point: interactive console mode or batch `--batch` mode. |
-| `pandemic_dashboard.html` | **Browser-based visual dashboard** (added in session 2, see below). |
+| `main.py` | CLI entry point: launches Tkinter dashboard by default, or headless `--batch` mode. |
+| `dashboard.py` | **Tkinter dashboard** — dark-theme GUI with live charts, KPI tiles, policy controls, event log, and toast notifications. |
 
 ### Simulation Tick Phases (strict order)
 
@@ -118,27 +118,37 @@ When `total_reserves < $2,500,000` (from $15M start):
 - **Output format**: `sim_results.csv` with 27 columns per tick
 - **Validation**: Sanity runs showed epidemic curve, economic collapse under no-policy conditions
 
-### Session 2 — Visual Dashboard (integrated into Python project)
-- **Request**: Visual interactive interface integrated into the Python project — `python main.py` opens the dashboard. Lighter colours, simpler/clearer UI.
-- **Delivered**:
-  - `server.py` — Flask server that runs the real Python simulation in a background thread and exposes a JSON API (`/state`, `/policy`, `/control`). The browser polls `/state` every 250ms for live data.
-  - `dashboard.html` — Clean light-theme HTML dashboard served by Flask. Policy controls POST to `/policy` immediately. Runs the real Python sim (not a JS port).
-  - `main.py` — Updated: default `python main.py` launches Flask + opens browser automatically. `--batch` flag still does the old headless CSV run. Auto-installs Flask if missing.
-- **API routes**:
-  - `GET /state` → full records history + last tick snapshot + current policy
-  - `POST /policy` → `{lockdown, mask, stimulus, vacc_rate}` — applied to live sim instantly
-  - `POST /control` → `{action: start|pause|reset|speed}` — controls the tick thread
-- **Design**: Light background (#f5f4f0), clean sans-serif, blue accent, semantic red/amber/green KPIs. Four charts: epidemic curve, economy (dual-axis GDP + unemployment), hospital pressure %, agent wealth mean/median.
+### Session 2 — Tkinter Visual Dashboard
+- **Request**: Visual interactive interface integrated into the Python project — `python main.py` opens the dashboard. Dark theme, game-style UI.
+- **Delivered**: `dashboard.py` — a self-contained Tkinter dashboard that runs the real Python simulation in a background thread and updates the UI on every tick.
+- **UI structure**:
+  - **Sidebar (left, 300px)**: Policy controls (lockdown picker, mask mandate checkbox, vaccination slider, stimulus slider, speed selector), Run/Pause/Next Day/Reset buttons, legend.
+  - **Main area (right)**: Five KPI tiles (Active, Deaths, Hospital %, Unemployment, Bankrupt companies), Crisis Score HUD, four live line charts (Infections, GDP, Hospital %, Wealth), Event Log, status bar.
+- **Key classes**:
+  - `Dashboard` — main `tk.Tk` window, owns the tick loop and all UI state.
+  - `LineChart` — canvas-based line chart with halo effect, grid lines, auto-scaling y-axis.
+  - `KpiTile` — animated numeric tile with sparkline and colour-coded status (green/yellow/red).
+  - `Sparkline` — small inline trend chart inside each KPI tile.
+  - `LockdownPicker` — row of four buttons (None/Light/Mod/Full) with colour coding per level.
+  - `ScoreHud` — crisis score display updated every tick.
+  - `EventLog` — scrollable text widget logging milestone events with coloured timestamps.
+- **Toast notifications**: Slide in horizontally from the right at the bottom of the window. Triggered once per event type (first death, hospital overwhelmed, first bankruptcy, wave peak, bank crisis, first rehire). Auto-dismiss after 2 seconds.
+- **Button design**: All buttons use `relief="groove"` with explicit `bg`, `fg`, `activebackground`, and `activeforeground` to ensure colours render correctly across platforms (macOS, Linux). Idle buttons use dark navy (`#2e3d52`) with white text. Selected/active states use bright colours (green, yellow, orange, red) with black text.
+- **Game-over modal**: Appears when the epidemic ends or 365 ticks complete. Shows final score, deaths, peak unemployment, bankruptcies, national debt, days survived, and a Replay button.
 - **Project structure after this session**:
   ```
-  agents.py        — AgentPool (NumPy vectorised)
-  entities.py      — Government, Banks, HealthcareDepartment, Company
-  simulation.py    — SimulationEngine (5-phase tick loop)
-  config.py        — All constants
-  server.py        — Flask API server  ← NEW
-  dashboard.html   — Browser UI        ← NEW
-  main.py          — Entry point (updated to launch dashboard by default)
+  agents.py      — AgentPool (NumPy vectorised)
+  entities.py    — Government, Banks, HealthcareDepartment, Company
+  simulation.py  — SimulationEngine (5-phase tick loop)
+  config.py      — All constants
+  dashboard.py   — Tkinter GUI dashboard
+  main.py        — Entry point (launches dashboard by default, --batch for headless)
   ```
+
+### Session 3 — Dashboard UI Fixes
+- **Button text readability**: Switched all buttons from `relief="flat"` to `relief="groove", bd=1` to force Tkinter to honour background colours on all platforms. Added `activebackground` and `activeforeground` to every button so hover/click states do not revert to system gray.
+- **Lockdown buttons no longer cut off**: Sidebar width reduced from 320px to 300px, internal padding from 16px to 12px, button width from 7 to 6 chars. All four buttons now fit without clipping.
+- **Toast position**: Moved from top-right (sliding in from the right) to bottom-right (sliding in horizontally from the right), so notifications do not obscure the KPI tiles.
 
 ---
 
