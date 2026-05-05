@@ -14,7 +14,7 @@ CONFIG: dict = {
 
     #  Epidemiology 
     #   BASE_TRANSMISSION_RATE: per-contact probability of infecting a susceptible
-    "BASE_TRANSMISSION_RATE":                   0.055,
+    "BASE_TRANSMISSION_RATE":                   0.045,
     #   MARKET_CONTACT_FRACTION: share of the market crowd each agent contacts per tick
     "MARKET_CONTACT_FRACTION":                  0.04,
     #   MARKET_TRANSMISSION_SCALE: market contacts are less close than workplace contacts
