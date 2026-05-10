@@ -14,7 +14,10 @@ import threading
 import tkinter as tk
 from typing import Callable, Optional
 
+import numpy as np
+
 from config import CONFIG
+from agents import HealthState
 from entities import Government
 from simulation import SimulationEngine
 
@@ -336,6 +339,93 @@ class EventLog(tk.Frame):
         self._txt.config(state="disabled")
 
 
+class AgentView(tk.Canvas):
+    """Canvas to visualize agents: size by wealth, color by health, position by company cluster."""
+
+    def __init__(self, parent, **kwargs):
+        super().__init__(
+            parent,
+            bg=SURFACE,
+            highlightthickness=1,
+            highlightbackground=BORDER,
+            **kwargs,
+        )
+        self.title = "AGENTS"
+        self.agents_data = None
+        self.company_positions = {}
+        self._rng = np.random.default_rng()
+        self._precompute_positions()
+        self.bind("<Configure>", lambda e: self.redraw())
+
+    def _precompute_positions(self):
+        """Arrange companies in a grid for spatial clustering."""
+        cols = 15
+        rows = (CONFIG["NUM_COMPANIES"] + cols - 1) // cols
+        spacing_x = 50
+        spacing_y = 50
+        for cid in range(CONFIG["NUM_COMPANIES"]):
+            row = cid // cols
+            col = cid % cols
+            self.company_positions[cid] = (col * spacing_x + 100, row * spacing_y + 100)
+
+    def set_agents(self, agents, subsample_size: int = 1000):
+        """Subsample agents and prepare data for drawing."""
+        n = agents.n
+        if subsample_size >= n:
+            indices = np.arange(n)
+        else:
+            indices = self._rng.choice(n, subsample_size, replace=False)
+
+        self.agents_data = []
+        for i in indices:
+            health = agents.health_state[i]
+            wallet = agents.wallet[i]
+            company = agents.company_id[i]
+
+            # Map health state to color
+            color_map = {
+                HealthState.SUSCEPTIBLE: C_GRAY,
+                HealthState.EXPOSED: C_YELLOW,
+                HealthState.INFECTIOUS_ASYMPTOMATIC: C_ORANGE,
+                HealthState.INFECTIOUS_SYMPTOMATIC: C_RED,
+                HealthState.RECOVERED: C_GREEN,
+                HealthState.DEAD: "#000000",
+            }
+            color = color_map.get(health, C_GRAY)
+
+            # Size: radius 2-10 based on wallet
+            min_wallet, max_wallet = 150.0, 2000.0
+            wallet_norm = (wallet - min_wallet) / (max_wallet - min_wallet)
+            wallet_norm = max(0.0, min(1.0, wallet_norm))
+            radius = 2 + 8 * wallet_norm
+            radius = max(2, min(10, radius))
+
+            # Position: company center + random offset
+            cx, cy = self.company_positions.get(int(company), (200, 200))
+            offset_x = self._rng.uniform(-20, 20)
+            offset_y = self._rng.uniform(-20, 20)
+            x, y = cx + offset_x, cy + offset_y
+            self.agents_data.append((x, y, radius, color))
+
+        self.redraw()
+
+    def redraw(self):
+        self.delete("all")
+        w = self.winfo_width()
+        h = self.winfo_height()
+        if w < 50 or h < 50 or not self.agents_data:
+            return
+
+        # Draw title
+        self.create_text(
+            10, 10, anchor="nw", text=self.title, fill=ACCENT, font=("Arial", 11, "bold")
+        )
+
+        # Draw agents as circles
+        for x, y, r, color in self.agents_data:
+            self.create_oval(x - r, y - r, x + r, y + r, fill=color, outline=color)
+
+
 class Dashboard(tk.Tk):
     SPEEDS = {"0.25x": 400, "0.5x": 200, "1x": 100, "2x": 50, "5x": 20}
 
@@ -607,15 +697,8 @@ class Dashboard(tk.Tk):
         )
         self._charts["hosp"].grid(row=1, column=0, sticky="nsew", padx=2, pady=2)
 
-        self._charts["wealth"] = LineChart(
-            self._charts_container,
-            "WEALTH",
-            [
-                {"label": "Mean", "color": ACCENT, "data": []},
-                {"label": "Median", "color": C_GREEN, "data": []},
-            ],
-        )
-        self._charts["wealth"].grid(row=1, column=1, sticky="nsew", padx=2, pady=2)
+        self._agent_view = AgentView(self._charts_container)
+        self._agent_view.grid(row=1, column=1, sticky="nsew", padx=2, pady=2)
 
         self._event_log = EventLog(parent)
         self._event_log.pack(fill="x", padx=8, pady=(4, 6))
@@ -676,7 +759,7 @@ class Dashboard(tk.Tk):
         self._charts["hosp"].set_all(
             [[x["healthcare_patients"] / max(1, x["healthcare_capacity"]) * 100 for x in R]]
         )
-        self._charts["wealth"].set_all([[x["mean_wallet"] for x in R], [x["median_wallet"] for x in R]])
+        self._agent_view.set_agents(self._sim.agents)
 
         active = r["infectious_asymptomatic"] + r["infectious_symptomatic"]
         self._peak_active = max(self._peak_active, int(active + r["exposed"]))
@@ -998,6 +1081,8 @@ class Dashboard(tk.Tk):
             for s in c.series:
                 s["data"] = []
             c.redraw()
+        self._agent_view.agents_data = None
+        self._agent_view.redraw()
         for k in self._kpis.values():
             k.update("—", "")
             k.set_sparkline([])
