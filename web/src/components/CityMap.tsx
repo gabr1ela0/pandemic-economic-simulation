@@ -37,8 +37,14 @@ const FLASH_COLORS = ['#ff6b5e', '#e74c3c', '#a83328']
 const MAX_FLASH_LINES = 120
 const FLASH_LIFETIME = 2
 
-const RADIUS_NORMAL = 2.6
-const RADIUS_SMALL = 1.6
+const RADIUS_NORMAL = 1.9
+const RADIUS_SMALL = 1.2
+
+// Agent sampling: at default zoom only a representative fraction of agents
+// is drawn so dots don't swallow the buildings behind them. As the user zooms
+// in, progressively more agents become visible.
+const AGENT_SAMPLE_MIN = 1800
+const AGENT_SAMPLE_FULL_ZOOM = 3.5
 
 const B_COMPANY_ESS = '#5d6e8a'
 const B_COMPANY_NON = '#384353'
@@ -172,6 +178,8 @@ interface MapData {
   prevCo: Int32Array
   prevBankrupt: Uint8Array
   prevStruggling: Uint8Array
+  /** Shuffled agent draw order — first K elements form a representative sample. */
+  renderOrder: Int32Array
   flashLines: FlashLine[]
   effects: Effect[]
   tickStartPerf: number
@@ -230,48 +238,57 @@ function smoothstep(t: number): number {
   return t * t * (3 - 2 * t)
 }
 
+function computeAgentSampleLimit(scale: number, n: number): number {
+  if (n <= AGENT_SAMPLE_MIN) return n
+  if (scale >= AGENT_SAMPLE_FULL_ZOOM) return n
+  if (scale <= DEFAULT_ZOOM) return AGENT_SAMPLE_MIN
+  const t = (scale - DEFAULT_ZOOM) / (AGENT_SAMPLE_FULL_ZOOM - DEFAULT_ZOOM)
+  return Math.min(n, Math.floor(AGENT_SAMPLE_MIN + (n - AGENT_SAMPLE_MIN) * t))
+}
+
 function generateLayout(
   companies: { sector: 'Essential' | 'Non-Essential' }[],
 ): Layout {
   const rng = makeRng(20260511)
 
-  // Houses ~ population-distributed
-  const housePlacements = distributeAroundCities(NUM_HOUSES, rng, 1.0)
+  // Houses ~ population-distributed. Min-distance keeps a clear street gap
+  // between rows so the country fill reads as roads, not floor tiles.
+  const housePlacements = distributeAroundCities(NUM_HOUSES, rng, 1.3, 18)
   const houseB: Building[] = housePlacements.map((p, i) => ({
     kind: 'house',
     id: i,
     cityIdx: p.cityIdx,
     cx: p.x,
     cy: p.y,
-    w: 12,
-    h: 10,
+    w: 14,
+    h: 12,
     fill: B_HOUSE,
   }))
 
-  const companyPlacements = distributeAroundCities(companies.length, rng, 0.7)
+  const companyPlacements = distributeAroundCities(companies.length, rng, 1.0, 44)
   const companyB: Building[] = companyPlacements.map((p, i) => ({
     kind: 'company',
     id: i,
     cityIdx: p.cityIdx,
     cx: p.x,
     cy: p.y,
-    w: 24,
-    h: 18,
+    w: 34,
+    h: 26,
     sector: companies[i].sector,
     bankruptFade: 0,
   }))
 
   // Markets: at the bigger cities mostly; spread a few to smaller towns.
   // Use distribute but with smaller spread so they cluster near city centres.
-  const marketPlacements = distributeAroundCities(NUM_MARKETS, rng, 0.5)
+  const marketPlacements = distributeAroundCities(NUM_MARKETS, rng, 0.7, 36)
   const marketB: Building[] = marketPlacements.map((p, i) => ({
     kind: 'market',
     id: i,
     cityIdx: p.cityIdx,
     cx: p.x,
     cy: p.y,
-    w: 22,
-    h: 18,
+    w: 28,
+    h: 22,
     visits: 0,
   }))
 
@@ -281,8 +298,8 @@ function generateLayout(
     .sort((a, b) => b.c.pop - a.c.pop)
   const hospitalSpec: { cityIdx: number; offset: [number, number] }[] = []
   // Chișinău twice (different neighbourhoods)
-  hospitalSpec.push({ cityIdx: hospitalCityOrder[0].idx, offset: [-50, -30] })
-  hospitalSpec.push({ cityIdx: hospitalCityOrder[0].idx, offset: [55, 35] })
+  hospitalSpec.push({ cityIdx: hospitalCityOrder[0].idx, offset: [-110, -70] })
+  hospitalSpec.push({ cityIdx: hospitalCityOrder[0].idx, offset: [120, 80] })
   // Then top-N others
   for (let i = 1; i < NUM_HOSPITALS - 1; i++) {
     hospitalSpec.push({ cityIdx: hospitalCityOrder[i].idx, offset: [0, 0] })
@@ -295,8 +312,8 @@ function generateLayout(
       cityIdx: spec.cityIdx,
       cx: city.x + spec.offset[0],
       cy: city.y + spec.offset[1],
-      w: 50,
-      h: 40,
+      w: 58,
+      h: 46,
     }
   })
 
@@ -308,10 +325,10 @@ function generateLayout(
       kind: 'unemp',
       id: i,
       cityIdx: hospitalCityOrder[i].idx,
-      cx: city.x + 70,
-      cy: city.y - 50,
-      w: 30,
-      h: 22,
+      cx: city.x + 140,
+      cy: city.y - 100,
+      w: 36,
+      h: 28,
     })
   }
 
@@ -664,6 +681,18 @@ export const CityMap = forwardRef<CityMapHandle, CityMapProps>(function CityMap(
     const targetX = startX.slice()
     const targetY = startY.slice()
 
+    // Shuffled agent render order so the first K agents form a uniform sample
+    // across both index space and (via 10-per-house assignment) all geography.
+    const renderOrder = new Int32Array(n)
+    for (let i = 0; i < n; i++) renderOrder[i] = i
+    const shuffleRng = makeRng(20260518)
+    for (let i = n - 1; i > 0; i--) {
+      const j = Math.floor(shuffleRng() * (i + 1))
+      const tmp = renderOrder[i]
+      renderOrder[i] = renderOrder[j]
+      renderOrder[j] = tmp
+    }
+
     // Initial cloud field
     const clouds: Cloud[] = []
     const cRng = makeRng(20260520)
@@ -704,6 +733,7 @@ export const CityMap = forwardRef<CityMapHandle, CityMapProps>(function CityMap(
       prevCo: new Int32Array(s.agents.companyId),
       prevBankrupt: new Uint8Array(s.companies.length),
       prevStruggling: new Uint8Array(s.companies.length),
+      renderOrder,
       flashLines: [],
       effects: [],
       tickStartPerf: performance.now() / 1000,
@@ -1261,6 +1291,10 @@ function drawAgents(
   const radiusOverride = lowZoom ? 1 : null
   const povertyMul = CONFIG.POVERTY_TRAP_MULTIPLIER
 
+  // Zoom-based sampling: at default zoom we only draw ~AGENT_SAMPLE_MIN agents,
+  // scaling up to the full population as the user zooms in.
+  const sampleLimit = computeAgentSampleLimit(scale, n)
+
   const buckets: Record<number, number[]> = {
     [HealthState.Susceptible]: [],
     [HealthState.Exposed]: [],
@@ -1269,7 +1303,8 @@ function drawAgents(
     [HealthState.Recovered]: [],
   }
   const povertyIdx: number[] = []
-  for (let i = 0; i < n; i++) {
+  for (let k = 0; k < sampleLimit; k++) {
+    const i = data.renderOrder[k]
     if (a.isAlive[i] === 0) continue
     const state = a.healthState[i]
     const list = buckets[state]

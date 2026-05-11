@@ -9,6 +9,8 @@ import type { TickRecord } from '@/sim/simulation'
 import { cn, formatMoney } from '@/lib/utils'
 
 const SPEEDS: { label: string; ms: number }[] = [
+  { label: '0.05x', ms: 2000 },
+  { label: '0.1x', ms: 1000 },
   { label: '0.25x', ms: 400 },
   { label: '0.5x', ms: 200 },
   { label: '1x', ms: 100 },
@@ -127,13 +129,13 @@ export function Sidebar(props: SidebarProps) {
       </Section>
 
       <Section title="Speed" badge={props.speedLabel}>
-        <div className="grid grid-cols-5 gap-1">
+        <div className="grid grid-cols-7 gap-1">
           {SPEEDS.map((s) => (
             <button
               key={s.label}
               onClick={() => props.onSpeedChange(s.label)}
               className={cn(
-                'rounded-md px-1 py-1 text-[10px] font-bold uppercase transition-colors',
+                'rounded-md px-0.5 py-1 text-[9px] font-bold uppercase transition-colors',
                 props.speedLabel === s.label
                   ? 'bg-primary text-primary-foreground'
                   : 'bg-secondary text-muted-foreground hover:bg-secondary/70',

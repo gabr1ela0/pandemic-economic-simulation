@@ -2,16 +2,16 @@
 // All coordinates are real WGS-84 lat/lon; we use a simple equirectangular
 // projection because the country is small enough that the distortion is invisible.
 
-export const MAP_LOGICAL_W = 4200
-export const MAP_LOGICAL_H = 3600
+export const MAP_LOGICAL_W = 5000
+export const MAP_LOGICAL_H = 4300
 
 const LAT_MIN = 45.30
 const LAT_MAX = 48.55
 const LON_MIN = 26.55
 const LON_MAX = 30.25
 
-const PAD_X = 90
-const PAD_Y = 90
+const PAD_X = 110
+const PAD_Y = 110
 
 export function project(lat: number, lon: number): { x: number; y: number } {
   const u = (lon - LON_MIN) / (LON_MAX - LON_MIN)
@@ -122,22 +122,22 @@ export interface City {
 
 // Real Moldovan cities + populations (thousands). Tier governs label visibility.
 export const CITIES: City[] = [
-  { name: 'Chișinău',  lat: 47.0105, lon: 28.8638, pop: 640, radius: 240, tier: 1 },
-  { name: 'Bălți',     lat: 47.7544, lon: 27.9229, pop: 145, radius: 130, tier: 1 },
-  { name: 'Tiraspol',  lat: 46.8403, lon: 29.6433, pop: 130, radius: 120, tier: 1 },
-  { name: 'Bender',    lat: 46.8369, lon: 29.4839, pop: 100, radius:  95, tier: 2 },
-  { name: 'Cahul',     lat: 45.9077, lon: 28.1949, pop:  30, radius:  60, tier: 2 },
-  { name: 'Ungheni',   lat: 47.2093, lon: 27.7949, pop:  30, radius:  55, tier: 2 },
-  { name: 'Comrat',    lat: 46.2967, lon: 28.6628, pop:  25, radius:  55, tier: 2 },
-  { name: 'Soroca',    lat: 48.1544, lon: 28.2992, pop:  22, radius:  50, tier: 2 },
-  { name: 'Orhei',     lat: 47.3857, lon: 28.8233, pop:  20, radius:  50, tier: 2 },
-  { name: 'Strășeni',  lat: 47.1444, lon: 28.6082, pop:  20, radius:  45, tier: 3 },
-  { name: 'Edineț',    lat: 48.1714, lon: 27.3119, pop:  17, radius:  45, tier: 3 },
-  { name: 'Ialoveni',  lat: 46.9445, lon: 28.7794, pop:  17, radius:  45, tier: 3 },
-  { name: 'Hîncești',  lat: 46.8268, lon: 28.5887, pop:  16, radius:  45, tier: 3 },
-  { name: 'Florești',  lat: 47.8839, lon: 28.2954, pop:  14, radius:  40, tier: 3 },
-  { name: 'Drochia',   lat: 48.0353, lon: 27.8131, pop:  13, radius:  40, tier: 3 },
-  { name: 'Călărași',  lat: 47.2569, lon: 28.3038, pop:  12, radius:  40, tier: 3 },
+  { name: 'Chișinău',  lat: 47.0105, lon: 28.8638, pop: 640, radius: 360, tier: 1 },
+  { name: 'Bălți',     lat: 47.7544, lon: 27.9229, pop: 145, radius: 200, tier: 1 },
+  { name: 'Tiraspol',  lat: 46.8403, lon: 29.6433, pop: 130, radius: 185, tier: 1 },
+  { name: 'Bender',    lat: 46.8369, lon: 29.4839, pop: 100, radius: 150, tier: 2 },
+  { name: 'Cahul',     lat: 45.9077, lon: 28.1949, pop:  30, radius:  95, tier: 2 },
+  { name: 'Ungheni',   lat: 47.2093, lon: 27.7949, pop:  30, radius:  90, tier: 2 },
+  { name: 'Comrat',    lat: 46.2967, lon: 28.6628, pop:  25, radius:  85, tier: 2 },
+  { name: 'Soroca',    lat: 48.1544, lon: 28.2992, pop:  22, radius:  80, tier: 2 },
+  { name: 'Orhei',     lat: 47.3857, lon: 28.8233, pop:  20, radius:  80, tier: 2 },
+  { name: 'Strășeni',  lat: 47.1444, lon: 28.6082, pop:  20, radius:  72, tier: 3 },
+  { name: 'Edineț',    lat: 48.1714, lon: 27.3119, pop:  17, radius:  72, tier: 3 },
+  { name: 'Ialoveni',  lat: 46.9445, lon: 28.7794, pop:  17, radius:  72, tier: 3 },
+  { name: 'Hîncești',  lat: 46.8268, lon: 28.5887, pop:  16, radius:  70, tier: 3 },
+  { name: 'Florești',  lat: 47.8839, lon: 28.2954, pop:  14, radius:  64, tier: 3 },
+  { name: 'Drochia',   lat: 48.0353, lon: 27.8131, pop:  13, radius:  64, tier: 3 },
+  { name: 'Călărași',  lat: 47.2569, lon: 28.3038, pop:  12, radius:  64, tier: 3 },
 ]
 
 // Roads: pairs of city names. Polylines are computed from the city positions
@@ -221,11 +221,16 @@ interface Placement { x: number; y: number; cityIdx: number }
  * Distribute `count` items across the cities, weighted by population, with
  * gaussian-ish offsets inside each city's radius. Rejects placements that fall
  * outside the country outline.
+ *
+ * When `minSelfDist` > 0, candidate placements within that distance of an
+ * already-placed same-kind item (in the same city) are rejected — this enforces
+ * visible gaps between buildings.
  */
 export function distributeAroundCities(
   count: number,
   rng: () => number,
   jitterScale = 1.0,
+  minSelfDist = 0,
 ): Placement[] {
   const totalPop = CITY_PROJ.reduce((s, c) => s + c.pop, 0)
   const out: Placement[] = []
@@ -249,14 +254,24 @@ export function distributeAroundCities(
     placed++
   }
 
+  const minDistSq = minSelfDist * minSelfDist
   for (let cityIdx = 0; cityIdx < CITY_PROJ.length; cityIdx++) {
     const c = CITY_PROJ[cityIdx]
     const target = allocations[cityIdx]
+    const cityStart = out.length
     let placedHere = 0
     let attempts = 0
-    const maxAttempts = target * 30
+    const maxAttempts = target * 60
+    let relaxFactor = 1.0
     while (placedHere < target && attempts < maxAttempts) {
       attempts++
+      // Allow the minimum distance to gradually relax if placement is hard,
+      // so we don't fall back to on-center collapse for dense cities.
+      if (minSelfDist > 0 && attempts > target * 20 && relaxFactor > 0.5) {
+        relaxFactor *= 0.92
+      }
+      const effMinSq =
+        minSelfDist > 0 ? minDistSq * relaxFactor * relaxFactor : 0
       // Box-Muller ish radial sample
       const r =
         Math.sqrt(-2 * Math.log(Math.max(rng(), 1e-9))) *
@@ -267,6 +282,18 @@ export function distributeAroundCities(
       const x = c.x + r * Math.cos(theta)
       const y = c.y + r * Math.sin(theta)
       if (!pointInOutline(x, y)) continue
+      if (effMinSq > 0) {
+        let tooClose = false
+        for (let k = cityStart; k < out.length; k++) {
+          const dx = out[k].x - x
+          const dy = out[k].y - y
+          if (dx * dx + dy * dy < effMinSq) {
+            tooClose = true
+            break
+          }
+        }
+        if (tooClose) continue
+      }
       out.push({ x, y, cityIdx })
       placedHere++
     }

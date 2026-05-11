@@ -14,12 +14,16 @@ import { SimulationEngine, type TickRecord } from '@/sim/simulation'
 type ViewMode = 'city' | 'chart'
 
 const SPEED_TO_MS: Record<string, number> = {
+  '0.05x': 2000,
+  '0.1x': 1000,
   '0.25x': 400,
   '0.5x': 200,
   '1x': 100,
   '2x': 50,
   '5x': 20,
 }
+
+const DEFAULT_SPEED_LABEL = '0.1x'
 
 const RED = '#e74c3c'
 const ORANGE = '#ff8c1a'
@@ -43,8 +47,8 @@ function App() {
   // ---- view + run state ----
   const [viewMode, setViewMode] = useState<ViewMode>('city')
   const [running, setRunning] = useState(false)
-  const [speedLabel, setSpeedLabel] = useState('1x')
-  const tickMsRef = useRef(SPEED_TO_MS['1x'])
+  const [speedLabel, setSpeedLabel] = useState(DEFAULT_SPEED_LABEL)
+  const tickMsRef = useRef(SPEED_TO_MS[DEFAULT_SPEED_LABEL])
 
   // ---- policy state mirrored for UI ----
   const [lockdownLevel, setLockdownLevel] = useState(0)
